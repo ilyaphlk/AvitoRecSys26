@@ -1,6 +1,8 @@
 services:
   dev:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/dev.dockerfile
     volumes:
       - ./src:/workspace/src
       - ./data:/data
