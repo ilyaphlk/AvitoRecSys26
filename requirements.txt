@@ -1,0 +1,7 @@
+torch==2.11.0
+pyarrow==19.0.0
+pandas==2.2.3
+polars==1.40.0
+lightgbm==4.6.0
+catboost==1.2.10
+scikit-learn==1.6.0
