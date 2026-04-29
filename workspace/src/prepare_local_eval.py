@@ -72,19 +72,19 @@ def _build_candidates(
     train = pl.scan_parquet(train_path)
     synth_train = train.filter(pl.col("timestamp") < threshold_ms)
 
-    train_items_2u = (
-        synth_train.group_by("item_id")
+    train_items_2u = (                   # select only those items, that have at least MIN_USERS_PER_ITEM unique
+        synth_train.group_by("item_id")  # users interacted with them. The list is unique by item_id
         .agg(pl.col("user_id").n_unique().alias("n_users"))
         .filter(pl.col("n_users") >= MIN_USERS_PER_ITEM)
         .select("item_id")
     )
-    seen = synth_train.select(["user_id", "item_id"]).unique()
+    seen = synth_train.select(["user_id", "item_id"]).unique()  # for each user select item_ids already seen
 
     candidates = (
-        train.filter(pl.col("timestamp") >= eval_start_ms)
-        .filter(pl.col("eid").is_in(contact_eids))
-        .join(train_items_2u, on="item_id", how="inner")
-        .join(seen, on=["user_id", "item_id"], how="anti")
+        train.filter(pl.col("timestamp") >= eval_start_ms)  # select events from eval time range,
+        .filter(pl.col("eid").is_in(contact_eids))          # only contact (target) ones
+        .join(train_items_2u, on="item_id", how="inner")    # only items above popularity thr
+        .join(seen, on=["user_id", "item_id"], how="anti")  # and only unseen by users from synth_train
         .collect()
     )
     logger.info(
@@ -103,37 +103,38 @@ def _build_user_sample(
     synth_train = pl.scan_parquet(train_path).filter(
         pl.col("timestamp") < threshold_ms
     )
-    items_v = pl.scan_parquet(item_features_path).select(["item_id", "vertical_id"])
+    items_v = pl.scan_parquet(item_features_path).select(["item_id", "vertical_id"])  # for each item get its slice (vertical)
 
     user_vertical = (
         synth_train.select(["user_id", "item_id"])
         .unique()
-        .join(items_v, on="item_id", how="inner")
+        .join(items_v, on="item_id", how="inner")                # join vertical_id
         .group_by(["user_id", "vertical_id"])
-        .agg(pl.len().alias("n_in_v"))
-        .join(eligible_users.lazy(), on="user_id", how="inner")
+        .agg(pl.len().alias("n_in_v"))                           # how many events in each vertical for each user
+        .join(eligible_users.lazy(), on="user_id", how="inner")  # but only for users from candidate events
         .collect()
     )
-    user_total = user_vertical.group_by("user_id").agg(
+    user_total = user_vertical.group_by("user_id").agg(          # count all events by user
         pl.col("n_in_v").sum().alias("n_total")
     )
 
     parts: list[pl.DataFrame] = []
     for bucket_name, vertical_ids in BUCKET_SPECS:
         bucket_n = (
-            user_vertical.filter(pl.col("vertical_id").is_in(list(vertical_ids)))
+            user_vertical.filter(pl.col("vertical_id").is_in(list(vertical_ids)))  # select only events in current bucket
             .group_by("user_id")
-            .agg(pl.col("n_in_v").sum().alias("n_in_bucket"))
+            .agg(pl.col("n_in_v").sum().alias("n_in_bucket"))  # basically the same, need only for v57 support
         )
-        focused = (
-            bucket_n.join(user_total, on="user_id")
+
+        focused = (                                    # select unique user_ids which have >= VERTICAL_THRESHOLD of all
+            bucket_n.join(user_total, on="user_id")    # their events belong to the current bucket + sort them
             .with_columns((pl.col("n_in_bucket") / pl.col("n_total")).alias("frac"))
             .filter(pl.col("frac") >= VERTICAL_THRESHOLD)
             .select("user_id")
             .unique()
             .sort("user_id")
         )
-        n = min(QUOTA_PER_VERTICAL, focused.height)
+        n = min(QUOTA_PER_VERTICAL, focused.height)    # sample at max QUOTA_PER_VERTICAL users from focused
         seed = 42 + sum(int(v) for v in vertical_ids)
         sample = focused.sample(n=n, seed=seed)
         logger.info(
@@ -143,13 +144,15 @@ def _build_user_sample(
         parts.append(sample.with_columns(pl.lit(bucket_name).alias("bucket")))
 
     bucketed = pl.concat([p.select("user_id") for p in parts]).unique()
+
     holdout_pool = (
         eligible_users.join(bucketed, on="user_id", how="anti").sort("user_id")
     )
     logger.info(
         f"Holdout pool: {holdout_pool.height:,} eligible users not in any vertical bucket"
     )
-    for i in range(N_HOLDOUT_BUCKETS):
+
+    for i in range(N_HOLDOUT_BUCKETS):  # iteratively select n random non-overlapping buckets from all the other users
         if holdout_pool.height == 0:
             break
         n = min(HOLDOUT_QUOTA, holdout_pool.height)
@@ -166,10 +169,14 @@ def _build_user_sample(
     logger.info(f"Total sampled: {combined.height:,} rows, {n_unique:,} unique users")
     if n_unique != combined.height:
         logger.warning(f"{combined.height - n_unique} duplicate user→bucket assignments")
-    return combined
+    return combined  # contains only `user_id` and `bucket` columns
 
 
 def _build_eval_rows(candidates: pl.DataFrame, sampled: pl.DataFrame) -> pl.DataFrame:
+    """
+        return top-K unique items from candidates dataframe, filtered by user_id from sampled
+        top-K by being earliest by timestamp
+    """
     return (
         candidates.join(sampled.select("user_id"), on="user_id", how="inner")
         .sort(["user_id", "timestamp"])
@@ -186,24 +193,32 @@ def prepare_local_eval(
     out_path: str,
     synth_threshold: str,
 ):
+    """
+        train_path - path to a single train file to split
+        item_features_path - path to a file with item features (need this for vertical_id)
+        contact_eids_path - path to a file with contact event types (to filter out only contact events)
+        synth_threshold - train cutoff dt to split by (in the YYYY-MM-DDTHH:mm:ss format)
+
+        writes <out_path>.csv - pairs of user_id, item_id (ground truth); <out_path>_users.csv (only users)
+    """
     threshold_date = datetime.fromisoformat(synth_threshold)
     eval_start_date = threshold_date + timedelta(hours=GAP_HOURS)
-    threshold_ms = int(threshold_date.timestamp() * 1000)
+    threshold_ms = int(threshold_date.timestamp() * 1000)  # multiply by 1000, so it is consistent with training data (in ms)
     eval_start_ms = int(eval_start_date.timestamp() * 1000)
     logger.info(
         f"synth_train: timestamp < {threshold_ms} ({threshold_date}) | "
         f"synth_eval: timestamp >= {eval_start_ms} ({eval_start_date}, gap {GAP_HOURS}h)"
     )
 
-    contact_eids = pl.read_csv(contact_eids_path).get_column("mapped_eid").to_list()
+    contact_eids = pl.read_csv(contact_eids_path).get_column("mapped_eid").to_list()  # materialize only contact eids
     logger.info(f"Contact eids: {contact_eids}")
 
-    candidates = _build_candidates(
+    candidates = _build_candidates(  # returns events from train eligible for eval (by date and popularity thr, unseen in synth_train)
         train_path, contact_eids, threshold_ms, eval_start_ms
     )
-    eligible_users = candidates.select("user_id").unique().sort("user_id")
+    eligible_users = candidates.select("user_id").unique().sort("user_id")  # unique users from that
 
-    sampled = _build_user_sample(
+    sampled = _build_user_sample(  # user_id, bucket - df sampled by bucket
         train_path, item_features_path, threshold_ms, eligible_users
     )
 
@@ -211,7 +226,7 @@ def prepare_local_eval(
     sampled.write_csv(users_path)
     logger.info(f"User → bucket map saved to {users_path}")
 
-    eval_df = _build_eval_rows(candidates, sampled)
+    eval_df = _build_eval_rows(candidates, sampled)  # ground truth
     eval_df.write_csv(out_path)
     logger.info(
         f"{out_path}: {eval_df.height:,} rows, "
