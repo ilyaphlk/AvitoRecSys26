@@ -4,9 +4,10 @@ services:
       context: ..
       dockerfile: docker/dev.dockerfile
     volumes:
-      - ./src:/workspace/src
-      - ./data:/data
-      - ./experiments:/experiments
+      - ../workspace/src:/workspace/src
+      - ../data:/data
+      - ../workspace/experiments:/workspace/experiments
+      - ../workspace/notebooks:/workspace/notebooks
     ports:
       - "8888:8888"
       - "5000:5000"
