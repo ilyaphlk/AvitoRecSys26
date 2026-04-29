@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y \
 
 RUN ln -s /usr/bin/python3.11 /usr/bin/python
 
-WORKDIR /workspace
+WORKDIR /project
 
 COPY requirements.txt .
 RUN python3.11 -m pip install --no-cache-dir --timeout=300 -r requirements.txt
