@@ -22,3 +22,10 @@ def calc_metric(df_true, df_pred):
         (pl.col("retrieved_items") / pl.col("total_items")).alias("recall")
     )
     return df_true_by_user["recall"].mean()
+
+
+def check_submission(df_true_filename, df_pred_filename):
+    df_true = pl.read_csv(df_true_filename)
+    df_pred = pl.read_csv(df_pred_filename)
+
+    return calc_metric(df_true, df_pred)
