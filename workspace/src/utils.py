@@ -1,13 +1,18 @@
 import polars as pl
 
 def calc_metric(df_true, df_pred):
-    # todo: assert that submit is valid:
-    # 1) all users from true are in pred and no other;
-    # 2) for each user all items are different
-
+    """
+        calculate mean recall across all eval (true) users
+    """
     # assert that sets of users are the same
     assert set(df_true["user_id"]) == set(df_pred["user_id"]), "sets of users in eval and pred are different"
 
+    # assert that all recommendations are unique for each user
+    count_unique_preds = df_pred.group_by("user_id").agg(
+        pl.col("item_id").len().alias("count"),
+        pl.col("item_id").n_unique().alias("count_unique")
+    )
+    assert(all(count_unique_preds["count"] == count_unique_preds["count_unique"])), "pred has users with non-unique items"
 
     joined = df_true.join(df_pred, on=("user_id", "item_id"))
     df_true_by_user = df_true.group_by("user_id").agg(pl.len().alias("total_items"))
