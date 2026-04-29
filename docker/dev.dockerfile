@@ -13,4 +13,4 @@ RUN ln -s /usr/bin/python3.11 /usr/bin/python
 WORKDIR /workspace
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python3.11 -m pip install --no-cache-dir --timeout=300 -r requirements.txt
