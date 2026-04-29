@@ -192,6 +192,7 @@ def prepare_local_eval(
     contact_eids_path: str,
     out_path: str,
     synth_threshold: str,
+    write_train_part: bool
 ):
     """
         train_path - path to a single train file to split
@@ -233,6 +234,20 @@ def prepare_local_eval(
         f"{eval_df['user_id'].n_unique():,} users with >=1 target"
     )
 
+    if write_train_part:
+        synth_train = (
+            pl.scan_parquet(train_path)
+            .join(eval_df.lazy(), on="user_id", how="semi")
+            .filter(pl.col("timestamp") < threshold_ms)
+        )
+        synth_train_filename = out_path.replace(".csv", "_user_events.parquet")
+        synth_train.sink_parquet(synth_train_filename)
+        logger.info(
+            f"{synth_train_filename}: {synth_train.select(pl.len()).collect().item()} rows, "
+            f"{synth_train.select(pl.col('item_id').n_unique()).collect().item()} unique items"
+        )
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
@@ -260,6 +275,13 @@ if __name__ == "__main__":
             f"is {DEFAULT_SYNTH_THRESHOLD} (one week before the official eval)."
         ),
     )
+    parser.add_argument(
+        "--write-train-part", action="store_true",
+        help=(
+            "if set, write train events part (before synth-threshold)"
+            "of users that have been sampled to eval buckets"
+        ),
+    )
     args = parser.parse_args()
 
     prepare_local_eval(
@@ -268,4 +290,5 @@ if __name__ == "__main__":
         contact_eids_path=args.contact_eids,
         out_path=args.out,
         synth_threshold=args.synth_threshold,
+        write_train_part=args.write_train_part
     )
