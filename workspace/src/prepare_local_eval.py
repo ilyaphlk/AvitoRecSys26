@@ -43,6 +43,9 @@ from datetime import datetime, timedelta
 import polars as pl
 from loguru import logger
 
+import os
+from pathlib import Path
+
 # ── Constants frozen by the official v4 eval spec ─────────────────────────
 DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00"  # 1 week before real threshold
 GAP_HOURS = 12
@@ -223,7 +226,9 @@ def prepare_local_eval(
         train_path, item_features_path, threshold_ms, eligible_users
     )
 
-    users_path = out_path.replace(".csv", "_users.csv")
+    out_path = Path(out_path)
+
+    users_path = out_path.with_stem("users_" + out_path.stem)
     sampled.write_csv(users_path)
     logger.info(f"User → bucket map saved to {users_path}")
 
@@ -240,7 +245,7 @@ def prepare_local_eval(
             .join(eval_df.lazy(), on="user_id", how="semi")
             .filter(pl.col("timestamp") < threshold_ms)
         )
-        synth_train_filename = out_path.replace(".csv", "_user_events.parquet")
+        synth_train_filename = out_path.with_stem("events_" + out_path.stem).with_suffix(".pq")
         synth_train.sink_parquet(synth_train_filename)
         logger.info(
             f"{synth_train_filename}: {synth_train.select(pl.len()).collect().item()} rows, "
@@ -284,11 +289,28 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    prepare_local_eval(
-        train_path=args.train,
-        item_features_path=args.item_features,
-        contact_eids_path=args.contact_eids,
-        out_path=args.out,
-        synth_threshold=args.synth_threshold,
-        write_train_part=args.write_train_part
-    )
+    assert os.path.isfile(args.train) == os.path.isfile(args.out)  # either both are files or directories
+
+    if os.path.isfile(args.train):
+        prepare_local_eval(
+            train_path=args.train,
+            item_features_path=args.item_features,
+            contact_eids_path=args.contact_eids,
+            out_path=args.out,
+            synth_threshold=args.synth_threshold,
+            write_train_part=args.write_train_part
+        )
+    else:
+        part_filenames = list(filter(lambda fn: fn.startswith("part_"), os.listdir(args.train)))
+        for part_filename in part_filenames:
+            train_path = os.path.join(args.train, part_filename)
+            out_filename = f"eval_{part_filename.split()[0]}.csv"
+            out_path = os.path.join(args.out, out_filename)
+            prepare_local_eval(
+                train_path=train_path,
+                item_features_path=args.item_features,
+                contact_eids_path=args.contact_eids,
+                out_path=out_path,
+                synth_threshold=args.synth_threshold,
+                write_train_part=args.write_train_part
+            )
