@@ -46,6 +46,8 @@ from loguru import logger
 import os
 from pathlib import Path
 
+from debug_constants import DEBUG_ARGV_PREPARE_LOCAL_EVAL
+
 # ── Constants frozen by the official v4 eval spec ─────────────────────────
 DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00"  # 1 week before real threshold
 GAP_HOURS = 12
