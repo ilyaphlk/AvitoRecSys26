@@ -302,8 +302,12 @@ if __name__ == "__main__":
             write_train_part=args.write_train_part
         )
     else:
+        logger.info(f"processing multiple files in the directory {args.train}..")
         part_filenames = list(filter(lambda fn: fn.startswith("part_"), os.listdir(args.train)))
+        newline = "\n"  # py3.11 workaround
+        logger.info(f"filenames to be processed: {newline.join(part_filenames)}")
         for part_filename in part_filenames:
+            logger.info(f"{'#'*20}{newline}start processing {part_filename}...{newline}")
             train_path = os.path.join(args.train, part_filename)
             out_filename = f"eval_{Path(part_filename).stem}.csv"
             out_path = os.path.join(args.out, out_filename)
