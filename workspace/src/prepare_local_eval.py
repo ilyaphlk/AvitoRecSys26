@@ -227,6 +227,7 @@ def prepare_local_eval(
     )
 
     out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
 
     users_path = out_path.with_stem("users_" + out_path.stem)
     sampled.write_csv(users_path)
@@ -304,7 +305,7 @@ if __name__ == "__main__":
         part_filenames = list(filter(lambda fn: fn.startswith("part_"), os.listdir(args.train)))
         for part_filename in part_filenames:
             train_path = os.path.join(args.train, part_filename)
-            out_filename = f"eval_{part_filename.split()[0]}.csv"
+            out_filename = f"eval_{Path(part_filename).stem}.csv"
             out_path = os.path.join(args.out, out_filename)
             prepare_local_eval(
                 train_path=train_path,
