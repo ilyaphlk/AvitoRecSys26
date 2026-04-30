@@ -105,7 +105,29 @@ def main():
 
     df_train = pl.scan_parquet(args.eval_user_events).select(pl.col("user_id"), pl.col("item_id"))
 
-    top_items = df_train.group_by("item_id").agg(pl.len().alias("count")).filter(pl.col("count") >= args.items_popularity_thr)
+
+    ### stats
+
+    quantiles = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
+
+    cnt_items = df_train.group_by("item_id").agg(pl.len().alias("count"))
+    quantiles_items = cnt_items.select(
+        [pl.col("count").quantile(q).alias(f"{int(100*q)}q") for q in quantiles],
+    )
+    logger.info(f"item_id popularity quantiles:\n{quantiles_items.collect()}\n")
+    
+    cnt_events = df_train.group_by("user_id").agg(pl.len().alias("count"))
+    quantiles_events = cnt_events.select(
+        [pl.col("count").quantile(q).alias(f"{int(100*q)}q") for q in quantiles],
+    )
+    logger.info(f"event count per user quantiles:\n{quantiles_events.collect()}\n")
+
+    top_items = cnt_items.filter(pl.col("count") >= args.items_popularity_thr)
+    top_items_cnt, total_items_cnt = top_items.select(pl.len()).collect().item(), cnt_items.select(pl.len()).collect().item()
+    logger.info(f"{top_items_cnt} / {total_items_cnt} = {100*top_items_cnt/total_items_cnt:2f}% items above threshold")
+
+
+    ### filtering
     df_train = df_train.join(top_items, on=("item_id"), how="semi").collect()
 
     logger.info("filtered unpopular items")
