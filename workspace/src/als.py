@@ -4,7 +4,7 @@ import implicit
 import polars as pl
 import argparse
 from loguru import logger
-
+from debug_constants import DEBUG_ARGV_ALS, SUBMIT_ARGV_ALS
 
 
 def get_als_pred(users, items, user_to_pred, N=160):
@@ -77,6 +77,10 @@ def get_als_pred(users, items, user_to_pred, N=160):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--train", type=str, required=True,
+        help="Path to train file",
+    )
+    parser.add_argument(
         "--eval-user-events", type=str, required=True,
         help="Path to eval_user_events.pq.",
     )
@@ -103,7 +107,10 @@ def main():
     args = parser.parse_args()
 
 
-    df_train = pl.scan_parquet(args.eval_user_events).select(pl.col("user_id"), pl.col("item_id"))
+    df_train = pl.concat([
+        pl.scan_parquet(args.train).select(pl.col("user_id"), pl.col("item_id")),
+        pl.scan_parquet(args.eval_user_events).select(pl.col("user_id"), pl.col("item_id"))
+    ])
 
 
     ### stats
