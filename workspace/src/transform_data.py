@@ -38,7 +38,7 @@ def make_predicate(col_name, val_range_item):
 
 def transform_date_to_ms(cfg):
     cfg["filters"]["timestamp"] = {
-        op: int(datetime.fromisoformat(val).timestamp() * 1000) for op, val in cfg["filters"]["date_thr"]
+        op: int(datetime.fromisoformat(val).timestamp() * 1000) for op, val in cfg["filters"]["date_thr"].items()
     }
     cfg["filters"].pop("date_thr")
 
@@ -68,13 +68,13 @@ def make_train(cfg, filename_in, filename_out):
 
 
 def main():
-    args = parse_args()
-    cfg = load_config(args.config)
+    args = parse_args(DEBUG_ARGV_MAKE_TRAIN)
+    cfg = load_config(args.config)["data"]
 
     filename_in = cfg["files"]["in"]
     filename_out = cfg["files"]["out"]
 
-    assert os.path.isfile(filename_in) == os.path.isfile(filename_out)
+    assert os.path.isfile(filename_in) == os.path.isfile(filename_out) or not os.path.exists(filename_out)
 
     if os.path.isfile(filename_in) or "*" in filename_in:
         make_train(
