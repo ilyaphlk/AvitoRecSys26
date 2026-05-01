@@ -7,14 +7,6 @@ from datetime import datetime
 from debug_constants import DEBUG_ARGV_MAKE_TRAIN
 import yaml
 
-PRED_OPS = {
-    "<":  lambda col, val: col < val,
-    ">":  lambda col, val: col > val,
-    "<=": lambda col, val: col <= val,
-    ">=": lambda col, val: col >= val,
-    "==": lambda col, val: col == val,
-}
-
 DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00"
 
 def load_config(config_path: str) -> dict:
@@ -29,6 +21,47 @@ def parse_args(argv=None):
     )
 
     return parser.parse_args(argv)
+
+PRED_OPS = {
+    "<":  lambda col, val: col < val,
+    ">":  lambda col, val: col > val,
+    "<=": lambda col, val: col <= val,
+    ">=": lambda col, val: col >= val,
+    "==": lambda col, val: col == val,
+}
+
+AGG_FUNCS = {
+    "count":    lambda col: col.count(),
+    "n_unique": lambda col: col.n_unique(),
+    "sum":      lambda col: col.sum(),
+    "mean":     lambda col: col.mean(),
+    "min":      lambda col: col.min(),
+    "max":      lambda col: col.max(),
+    "first":    lambda col: col.first(),
+    "last":     lambda col: col.last(),
+}
+
+def make_agg_expr(agg_item: dict, keys: list[str]) -> pl.Expr:
+    col_name = agg_item["col"]
+    func = agg_item["func"]
+    alias = agg_item.get("alias", f"{func}_{col_name}_by_{'_'.join(keys)}")
+
+    if func not in AGG_FUNCS:
+        raise ValueError(f"Unknown aggregation function '{func}'")
+
+    return AGG_FUNCS[func](pl.col(col_name)).alias(alias)
+
+def make_aggregations(df: pl.LazyFrame, cfg: dict) -> dict[tuple[str], pl.LazyFrame]:
+    if "features" not in cfg or "aggregations" not in cfg["features"]:
+        return dict()
+
+    agg_frames = dict()
+    for agg_block in cfg["features"]["aggregations"]:
+        keys = agg_block["group_by"]
+        exprs = [make_agg_expr(item, keys) for item in agg_block["agg"]]
+        agg_frames[tuple(keys)] = df.group_by(keys).agg(exprs)
+
+    return agg_frames
 
 def make_predicate(col_name, val_range_item):
     pred, val = val_range_item
@@ -62,9 +95,17 @@ def make_train(cfg, filename_in, filename_out):
     out_path = Path(filename_out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    filters = make_filters(cfg)
+    df = pl.scan_parquet(filename_in)
 
-    pl.scan_parquet(filename_in).filter(*filters).sink_parquet(out_path)
+    agg_frames = make_aggregations(df, cfg)
+
+    for keys, agg_frame in agg_frames.items():
+        df = df.join(agg_frame, on=keys)
+
+    filters = make_filters(cfg)
+    df = df.filter(*filters)
+
+    df.sink_parquet(out_path)
 
 
 def main():
