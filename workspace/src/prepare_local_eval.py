@@ -74,6 +74,7 @@ def _build_candidates(
     threshold_ms: int,
     eval_start_ms: int,
 ) -> pl.DataFrame:
+    logger.debug("start building candidates...")
     train = pl.scan_parquet(train_path)
     synth_train = train.filter(pl.col("timestamp") < threshold_ms)
 
@@ -110,6 +111,7 @@ def _build_user_sample(
     )
     items_v = pl.scan_parquet(item_features_path).select(["item_id", "vertical_id"])  # for each item get its slice (vertical)
 
+    logger.info("start making vertical stats...")
     user_vertical = (
         synth_train.select(["user_id", "item_id"])
         .unique()
@@ -125,6 +127,7 @@ def _build_user_sample(
 
     parts: list[pl.DataFrame] = []
     for bucket_name, vertical_ids in BUCKET_SPECS:
+        logger.info(f"start processing bucket {bucket_name}")
         bucket_n = (
             user_vertical.filter(pl.col("vertical_id").is_in(list(vertical_ids)))  # select only events in current bucket
             .group_by("user_id")
@@ -294,7 +297,7 @@ if __name__ == "__main__":
 
     assert os.path.isfile(args.train) == os.path.isfile(args.out)  # either both are files or directories
 
-    if os.path.isfile(args.train):
+    if os.path.isfile(args.train) or "*" in args.train:  # process wildcard pattern as one merged file
         prepare_local_eval(
             train_path=args.train,
             item_features_path=args.item_features,
