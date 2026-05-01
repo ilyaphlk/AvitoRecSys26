@@ -69,9 +69,13 @@ def make_agg_expr(agg_item: dict, keys: list[str]) -> pl.Expr:
     alias = agg_item.get("alias", f"{func}_{col_name}_by_{'_'.join(keys)}")
 
     expr = pl.col(col_name)
-    if "filter" in agg_item:
-        filter_expr = make_predicate(agg_item["filter"])
-        expr = expr.filter(filter_expr)
+    if "filters" in agg_item:
+        filters = []
+        for filter in agg_item["filters"]:
+            for filter_col_name, val_range in filter.items():
+                for val_range_item in val_range.items():
+                    filters.append(make_predicate(filter_col_name, val_range_item))
+        expr = expr.filter(*filters)
 
     if func not in AGG_FUNCS:
         raise ValueError(f"Unknown aggregation function '{func}'")
