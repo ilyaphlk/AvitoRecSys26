@@ -3,10 +3,25 @@ import os
 import argparse
 from pathlib import Path
 from loguru import logger
+from datetime import datetime
 from debug_constants import DEBUG_ARGV_MAKE_TRAIN
-from datetime import datetime, timedelta
+import yaml
 
-DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00" 
+
+DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00"
+
+def load_config(config_path: str) -> dict:
+    with open(config_path) as f:
+        return yaml.safe_load(f)
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--config", type=str, default="config.yaml",
+        help="Path to YAML config file.",
+    )
+
+    return parser.parse_args(argv)
 
 def make_train(filename_in, filename_out, threshold_date):
     threshold_ms = int(threshold_date.timestamp() * 1000)
@@ -18,51 +33,35 @@ def make_train(filename_in, filename_out, threshold_date):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--train", type=str, required=True,
-        help="Path to train file/dir — full pre-threshold clickstream.",
-    )
-    parser.add_argument(
-        "--out", type=str, required=True,
-        help="Output filename/dir.",
-    )
-    parser.add_argument(
-        "--synth-threshold", type=str, default=DEFAULT_SYNTH_THRESHOLD,
-        help=(
-            "Synthetic threshold date (ISO). Events strictly before this go to "
-            "synth_train, events at/after this + 12h go to synth_eval. Default "
-            f"is {DEFAULT_SYNTH_THRESHOLD} (one week before the official eval)."
-        ),
-    )
+    args = parse_args()
+    cfg = load_config(args.config)
 
-    args = parser.parse_args()
+    filename_in = cfg["files"]["in"]
+    filename_out = cfg["files"]["out"]
+    threshold_date = datetime.fromisoformat(cfg["filters"]["date_thr"])
 
-    assert os.path.isfile(args.train) == os.path.isfile(args.out)  # either both are files or directories
+    assert os.path.isfile(filename_in) == os.path.isfile(filename_out)
 
-    threshold_date = datetime.fromisoformat(args.synth_threshold)
-
-    if os.path.isfile(args.train) or "*" in args.train:  # process wildcard pattern as one merged file
+    if os.path.isfile(filename_in) or "*" in filename_in:
         make_train(
-            filename_in=args.train,
-            filename_out=args.out,
+            filename_in=filename_in,
+            filename_out=filename_out,
             threshold_date=threshold_date
         )
     else:
-        logger.info(f"processing multiple files in the directory {args.train}..")
-        part_filenames = list(filter(lambda fn: fn.startswith("part_"), os.listdir(args.train)))
-        newline = "\n"  # py3.11 workaround
-        logger.info(f"filenames to be processed: {newline.join(part_filenames)}")
+        logger.info(f"Processing multiple files in {filename_in}..")
+        part_filenames = list(filter(lambda fn: fn.startswith("part_"), os.listdir(filename_in)))
+        newline = "\n"
+        logger.info(f"Filenames to process:\n{newline.join(part_filenames)}")
+
         for part_filename in part_filenames:
-            logger.info(f"{'#'*20}{newline}start processing {part_filename}...{newline}")
-            train_path = os.path.join(args.train, part_filename)
-            out_filename = part_filename
-            out_path = os.path.join(args.out, out_filename)
+            logger.info(f"{'#'*20}\nProcessing {part_filename}...\n")
             make_train(
-                filename_in=train_path,
-                filename_out=out_path,
-                threshold_date=threshold_date
+                filename_in=os.path.join(filename_in, part_filename),
+                filename_out=os.path.join(filename_out, part_filename),
+                threshold_date=threshold_date,
             )
+
 
 if __name__ == "__main__":
     main()
