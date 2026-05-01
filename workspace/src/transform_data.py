@@ -8,6 +8,7 @@ from debug_constants import DEBUG_ARGV_MAKE_TRAIN
 import yaml
 
 DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00"
+CONTACT_EIDS = [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]
 
 def load_config(config_path: str) -> dict:
     with open(config_path) as f:
@@ -28,6 +29,7 @@ PRED_OPS = {
     "<=": lambda col, val: col <= val,
     ">=": lambda col, val: col >= val,
     "==": lambda col, val: col == val,
+    "is_in": lambda col, val: col.is_in(val)
 }
 
 AGG_FUNCS = {
@@ -46,10 +48,15 @@ def make_agg_expr(agg_item: dict, keys: list[str]) -> pl.Expr:
     func = agg_item["func"]
     alias = agg_item.get("alias", f"{func}_{col_name}_by_{'_'.join(keys)}")
 
+    expr = pl.col(col_name)
+    if "filter" in agg_item:
+        filter_expr = make_predicate(agg_item["filter"])
+        expr = expr.filter(filter_expr)
+
     if func not in AGG_FUNCS:
         raise ValueError(f"Unknown aggregation function '{func}'")
 
-    return AGG_FUNCS[func](pl.col(col_name)).alias(alias)
+    return AGG_FUNCS[func](expr).alias(alias)
 
 def make_aggregations(df: pl.LazyFrame, cfg: dict) -> dict[tuple[str], pl.LazyFrame]:
     if "features" not in cfg or "aggregations" not in cfg["features"]:
