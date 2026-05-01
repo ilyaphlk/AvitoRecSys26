@@ -10,9 +10,11 @@ DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00"
 
 def make_train(filename_in, filename_out, threshold_date):
     threshold_ms = int(threshold_date.timestamp() * 1000)
+    out_path = Path(filename_out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     pl.scan_parquet(filename_in).filter(
         pl.col("timestamp") < threshold_ms
-    ).sink_parquet(filename_out)
+    ).sink_parquet(out_path)
 
 
 def main():
