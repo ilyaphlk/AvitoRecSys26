@@ -10,9 +10,29 @@ import yaml
 DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00"
 CONTACT_EIDS = [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]
 
+def resolve_constants(cfg: dict) -> dict:
+    """Replace '$NAME' strings with their value from cfg['constants']."""
+    constants = cfg.get("constants", {})
+
+    def resolve(obj):
+        if isinstance(obj, str) and obj.startswith("$"):
+            key = obj[1:]
+            if key not in constants:
+                raise ValueError(f"Undefined constant '{key}'")
+            return constants[key]
+        if isinstance(obj, dict):
+            return {k: resolve(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [resolve(v) for v in obj]
+        return obj
+
+    return resolve(cfg)
+
+
 def load_config(config_path: str) -> dict:
     with open(config_path) as f:
-        return yaml.safe_load(f)
+        cfg = yaml.safe_load(f)
+    return resolve_constants(cfg)
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
