@@ -113,15 +113,15 @@ def transform_date_to_ms(cfg):
 
 def make_filters(cfg):
     if "filters" not in cfg:
-        return []
+        return dict()
 
     if "date_thr" in cfg["filters"]:
         transform_date_to_ms(cfg)
 
-    filters = []
+    filters = dict()
     for col_name, val_range in cfg["filters"].items():
         for val_range_item in val_range.items():
-            filters.append(make_predicate(pl.col(col_name), val_range_item))
+            filters[col_name] = make_predicate(pl.col(col_name), val_range_item)
     return filters
 
 def apply_filters(df, filter_expressions):
@@ -134,12 +134,21 @@ def make_train(cfg, filename_in, filename_out):
     df = pl.scan_parquet(filename_in)
 
     agg_frames = make_aggregations(df, cfg)
-
-    for keys, agg_frame in agg_frames.items():
-        df = df.join(agg_frame, on=keys)
-
     filters = make_filters(cfg)
-    df = df.filter(*filters)
+
+    collected_agg_frames = dict()
+    for keys, agg_frame in agg_frames.items():
+        valid_filters = {fname: f for fname, f in filters.items() if fname in agg_frame.collect_schema().names()}
+        agg_frame = agg_frame.filter(*valid_filters.values())
+        collected_agg_frames[keys] = agg_frame.collect()
+
+    for keys, agg_frame in collected_agg_frames.items():
+        df = df.join(agg_frame.lazy(), on=keys, how='semi')
+
+    for keys, agg_frame in collected_agg_frames.items():
+        df = df.join(agg_frame.lazy(), on=keys, how='inner')
+
+    df = df.filter(*filters.values())
 
     df.sink_parquet(out_path)
 
