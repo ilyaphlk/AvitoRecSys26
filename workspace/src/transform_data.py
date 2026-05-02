@@ -49,24 +49,29 @@ PRED_OPS = {
     "<=": lambda col, val: col <= val,
     ">=": lambda col, val: col >= val,
     "==": lambda col, val: col == val,
+    "!=": lambda col, val: col != val,
     "is_in": lambda col, val: col.is_in(val)
 }
 
 AGG_FUNCS = {
-    "count":    lambda col: col.count(),
-    "n_unique": lambda col: col.n_unique(),
-    "sum":      lambda col: col.sum(),
-    "mean":     lambda col: col.mean(),
-    "min":      lambda col: col.min(),
-    "max":      lambda col: col.max(),
-    "first":    lambda col: col.first(),
-    "last":     lambda col: col.last(),
+    "count":    lambda col, **kw: col.count(),
+    "n_unique": lambda col, **kw: col.n_unique(),
+    "sum":      lambda col, **kw: col.sum(),
+    "mean":     lambda col, **kw: col.mean(),
+    "min":      lambda col, **kw: col.min(),
+    "max":      lambda col, **kw: col.max(),
+    "first":    lambda col, **kw: col.first(),
+    "last":     lambda col, **kw: col.last(),
+    "unique":   lambda col, **kw: col.unique(),
+    "count_if": lambda col, val_range, **kw: pl.all_horizontal(
+        [make_predicate(col, val_range_item) for val_range_item in val_range.items()]).sum()
 }
 
 def make_agg_expr(agg_item: dict, keys: list[str]) -> pl.Expr:
     col_name = agg_item["col"]
     func = agg_item["func"]
     alias = agg_item.get("alias", f"{func}_{col_name}_by_{'_'.join(keys)}")
+    condition = agg_item.get("condition", None)
 
     expr = pl.col(col_name)
     if "filters" in agg_item:
@@ -74,13 +79,13 @@ def make_agg_expr(agg_item: dict, keys: list[str]) -> pl.Expr:
         for filter in agg_item["filters"]:
             for filter_col_name, val_range in filter.items():
                 for val_range_item in val_range.items():
-                    filters.append(make_predicate(filter_col_name, val_range_item))
+                    filters.append(make_predicate(pl.col(filter_col_name), val_range_item))
         expr = expr.filter(*filters)
 
     if func not in AGG_FUNCS:
         raise ValueError(f"Unknown aggregation function '{func}'")
 
-    return AGG_FUNCS[func](expr).alias(alias)
+    return AGG_FUNCS[func](expr, val_range=condition).alias(alias)
 
 def make_aggregations(df: pl.LazyFrame, cfg: dict) -> dict[tuple[str], pl.LazyFrame]:
     if "features" not in cfg or "aggregations" not in cfg["features"]:
@@ -94,11 +99,11 @@ def make_aggregations(df: pl.LazyFrame, cfg: dict) -> dict[tuple[str], pl.LazyFr
 
     return agg_frames
 
-def make_predicate(col_name, val_range_item):
+def make_predicate(expr, val_range_item):
     pred, val = val_range_item
     if pred not in PRED_OPS:
-        raise ValueError(f"Unknown predicate '{pred}' for column '{col_name}'")
-    return PRED_OPS[pred](pl.col(col_name), val)
+        raise ValueError(f"Unknown predicate '{pred}'")
+    return PRED_OPS[pred](expr, val)
 
 def transform_date_to_ms(cfg):
     cfg["filters"]["timestamp"] = {
@@ -116,7 +121,7 @@ def make_filters(cfg):
     filters = []
     for col_name, val_range in cfg["filters"].items():
         for val_range_item in val_range.items():
-            filters.append(make_predicate(col_name, val_range_item))
+            filters.append(make_predicate(pl.col(col_name), val_range_item))
     return filters
 
 def apply_filters(df, filter_expressions):

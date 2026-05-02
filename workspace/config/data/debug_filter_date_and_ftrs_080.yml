@@ -19,7 +19,8 @@ data:
       agg:
         - {alias: last_interaction_ts,          col: timestamp, func: max}
         - {alias: cnt_shows_by_user_id_item_id, col: timestamp, func: count}
-        - {alias: cnt_clicks_by_user_id_item_id, col: eid, func: sum, filters: [eid: {is_in: $CONTACT_EIDS}]}
+        - {alias: unique_eids_by_user_id_item_id, col: eid, func: unique, filters: [eid: {is_in: $CONTACT_EIDS}]}  # filter only contact eids, then apply function on the eids
+        - {alias: cnt_clicks_by_user_id_item_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
   filters:
     date_thr: {"<": "2026-04-08T00:00:00"}
     events_cnt_by_item_id: {">": 10}
