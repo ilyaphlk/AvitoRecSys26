@@ -1,40 +1,116 @@
 from scipy.sparse import csr_matrix
 import numpy as np
 import implicit
+import os
 import polars as pl
 import argparse
 from loguru import logger
-from debug_constants import DEBUG_ARGV_ALS, SUBMIT_ARGV_ALS
+from debug_constants import DEBUG_ARGV_ALS, ARGV_ALS_LOCAL_SEPARATE, SUBMIT_ARGV_ALS
+from pathlib import Path
+import time
+import psutil
+
+def ram_report():
+    mem = psutil.virtual_memory()
+    available_bytes = mem.available
+    available_gb = available_bytes / (1024 ** 3)
+    logger.info(f"RAM Available/Total/Usage: {available_gb:.2f}GB / {mem.total / (1024 ** 3):.2f}GB / {mem.percent}%")
 
 
-def get_als_pred(users, items, user_to_pred, N=160):
-    user_ids = users.unique().to_list()
-    item_ids = items.unique().to_list()
+def get_als_pred(df_train, user_to_pred, N=160, batch_size=100):
+    user_ids = df_train["user_id"].unique().to_numpy()
+    item_ids = df_train["item_id"].unique().to_numpy()
+
+    logger.info("made unique")
 
     user_id_to_index = {user_id: idx for idx, user_id in enumerate(user_ids)}
     item_id_to_index = {item_id: idx for idx, item_id in enumerate(item_ids)}
+
+    user4pred_popular = np.array(list(set(user_to_pred) - set(user_ids)))
+    n_unique_users, n_unique_items = len(user_ids), len(item_ids)
+    del user_ids, item_ids
+
+    logger.info(f"made maps to idx. max user_idx: {len(user_id_to_index)}, max_item_idx: {len(item_id_to_index)}")
+    logger.debug("deleted user_ids, item_ids.")
+
+    rows = df_train["user_id"].replace_strict(user_id_to_index).cast(pl.UInt32).to_numpy()
+    cols = df_train["item_id"].replace_strict(item_id_to_index).cast(pl.UInt32).to_numpy()
+
+    logger.info("made rows & cols")
+
+    values = (df_train["cnt_shows_by_user_id_item_id"] + 10 * df_train["cnt_clicks_by_user_id_item_id"]).cast(pl.Float32).to_numpy()
+
+    # for the non-als preds below
+    popular_top = (
+        pl.DataFrame({"item_id": df_train["item_id"]})
+        .group_by("item_id")
+        .agg(pl.len().alias("count"))
+        .sort(by=("count"), descending=True)
+        .head(N)
+    )
+    del df_train
+    logger.debug("deleted df_train")
+    ram_report()
+
+    logger.info("start init matrix...")
+    sparse_matrix = csr_matrix((values, (rows, cols)),shape=(n_unique_users, n_unique_items))
+    del rows, cols, values
+    logger.info("finish init matrix")
+    ram_report()
+
+    logger.info("start fit model...")
+    model = implicit.als.AlternatingLeastSquares(iterations=10, factors=60, random_state=42, calculate_training_loss=True)
+    model.fit(sparse_matrix, )
+    logger.info("finish fit model")
+
+    user4pred_als = np.array([user_id_to_index[i] for i in user_to_pred if i in user_id_to_index])
+    user_matrix = sparse_matrix[user4pred_als]
+    del sparse_matrix
+    logger.debug("deleted full matrix")
+
+    ram_report()
+
+    #recommendations, scores = model.recommend(user4pred_als, user_matrix, N=160, filter_already_liked_items=True)
+    all_recommendations = []
+    all_scores = []
+
+    total_batches = (len(user4pred_als) + batch_size - 1) // batch_size
+    for start in range(0, len(user4pred_als), batch_size):
+        logger.info(f"start recommending for batch {start // batch_size + 1} / {total_batches}")
+        end = min(start + batch_size, len(user4pred_als))
+        batch_user_ids = user4pred_als[start:end]
+        batch_user_matrix = user_matrix[start:end]
+        logger.debug("copied batch into ram")
+        ram_report()
+
+        batch_recs, batch_scores = model.recommend(
+            batch_user_ids,
+            batch_user_matrix,
+            N=N,
+            filter_already_liked_items=True
+        )
+        logger.debug("finished recommending")
+        ram_report()
+
+        all_recommendations.append(batch_recs)
+        all_scores.append(batch_scores)
+        del batch_recs, batch_scores, batch_user_ids, batch_user_matrix
+
+        logger.debug("deleted local vars explicitly")
+        ram_report()
+        logger.info(f"recommended for users {start}:{end} / {len(user4pred_als)}")
+
+
+    recommendations = np.vstack(all_recommendations)
+    scores = np.vstack(all_scores)
+
+    logger.info(f"got recs for {len(recommendations)} users seen in train")
+
     index_to_item_id = {v:k for k,v in item_id_to_index.items()}
     index_to_user_id = {v:k for k,v in user_id_to_index.items()}
 
-    rows = users.replace_strict(user_id_to_index).to_list()
-    cols = items.replace_strict(item_id_to_index).to_list()
+    logger.info("made maps from idx")
 
-    values = [1] * len(users)
-
-    sparse_matrix = csr_matrix((values, (rows, cols)), shape=(len(user_ids), len(item_ids)))
-
-    logger.info("init matrix")
-
-    model = implicit.als.AlternatingLeastSquares(iterations=10, factors=60)
-    model.fit(sparse_matrix, )
-
-    logger.info("fit model")
-
-    user4pred_als = np.array([user_id_to_index[i] for i in user_to_pred if i in user_id_to_index])
-    recommendations, scores = model.recommend(user4pred_als, sparse_matrix[user4pred_als], N=160, filter_already_liked_items=True)
-
-    logger.info(f"got recs for {len(recommendations)} users seen in train")
-    
     df_pred = pl.DataFrame(
         {
             'item_id': [
@@ -47,18 +123,15 @@ def get_als_pred(users, items, user_to_pred, N=160):
         }
     )
 
+    logger.info("made df_pred for als recs")
+
     df_pred = df_pred.explode(['item_id', 'scores'])
 
+    logger.info("exploded it")
+
     # fallback to popular items
-    user4pred_popular = np.array(list(set(user_to_pred) - set(users)))
+    
     logger.info(f"{len(user4pred_popular)} users to pred by popularity (cold start)")
-    popular_top = (
-        pl.DataFrame({"item_id":items})
-        .group_by("item_id")
-        .agg(pl.len().alias("count"))
-        .sort(by=("count"), descending=True)
-        .head(N)
-    )
 
     logger.info(f"computed popular_top")
 
@@ -69,7 +142,11 @@ def get_als_pred(users, items, user_to_pred, N=160):
             'scores': [list(popular_top["count"] * 1.0) for _ in range(len(user4pred_popular))]
         }
     )
-    df_pred_popular = df_pred_popular.explode(['item_id', 'scores'])
+    df_pred_popular = df_pred_popular.explode(['item_id', 'scores']).with_columns(
+        pl.col("item_id").cast(pl.UInt32).alias("item_id"),
+        pl.col("user_id").cast(pl.UInt32).alias("user_id"),
+        pl.col("scores").cast(pl.Float64).alias("scores"),
+    )
 
     return pl.concat([df_pred, df_pred_popular])
 
@@ -104,43 +181,59 @@ def main():
         "--items-popularity-thr", type=int, default=3,
         help="All items with less than N occurences will be removed from train.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(SUBMIT_ARGV_ALS)
 
+    logger.info("starting pipeline...")
 
-    df_train = pl.concat([
-        pl.scan_parquet(args.train).select(pl.col("user_id"), pl.col("item_id")),
-        pl.scan_parquet(args.eval_user_events).select(pl.col("user_id"), pl.col("item_id"))
-    ])
+    train_path = Path(args.train)
+    if os.path.isdir(train_path):
+        full_paths = [os.path.join(train_path, fn) for fn in os.listdir(train_path) if os.path.isfile(os.path.join(train_path, fn))]
+    else:
+        full_paths = [train_path]
+    logger.info(f"full paths to train parts: {full_paths}")
 
+    collected_train_parts = []
 
-    ### stats
-
-    quantiles = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]
-
-    cnt_items = df_train.group_by("item_id").agg(pl.len().alias("count"))
-    quantiles_items = cnt_items.select(
-        [pl.col("count").quantile(q).alias(f"{int(100*q)}q") for q in quantiles],
+    logger.info(f"collecting part {args.eval_user_events}...")
+    collected_train_parts.append(
+        (
+            pl.scan_parquet(args.eval_user_events)
+            .select(
+                pl.col("user_id"),
+                pl.col("item_id"),
+                pl.col("cnt_shows_by_user_id_item_id"),
+                pl.col("cnt_clicks_by_user_id_item_id")
+            )
+            .group_by(["user_id", "item_id"])
+            .agg(pl.col("cnt_shows_by_user_id_item_id").first(), pl.col("cnt_clicks_by_user_id_item_id").first()).collect()
+        )
     )
-    logger.info(f"item_id popularity quantiles:\n{quantiles_items.collect()}\n")
-    
-    cnt_events = df_train.group_by("user_id").agg(pl.len().alias("count"))
-    quantiles_events = cnt_events.select(
-        [pl.col("count").quantile(q).alias(f"{int(100*q)}q") for q in quantiles],
-    )
-    logger.info(f"event count per user quantiles:\n{quantiles_events.collect()}\n")
 
-    top_items = cnt_items.filter(pl.col("count") >= args.items_popularity_thr)
-    top_items_cnt, total_items_cnt = top_items.select(pl.len()).collect().item(), cnt_items.select(pl.len()).collect().item()
-    logger.info(f"{top_items_cnt} / {total_items_cnt} = {100*top_items_cnt/total_items_cnt:2f}% items above threshold")
+    for fp in sorted(full_paths):
+        logger.info(f"collecting part {fp}...")
+        collected_train_parts.append(
+            (
+                pl.scan_parquet(fp)
+                .select(
+                    pl.col("user_id"),
+                    pl.col("item_id"),
+                    pl.col("cnt_shows_by_user_id_item_id"),
+                    pl.col("cnt_clicks_by_user_id_item_id")
+                )
+                .group_by(["user_id", "item_id"])
+                .agg(pl.col("cnt_shows_by_user_id_item_id").first(), pl.col("cnt_clicks_by_user_id_item_id").first()).collect()
+            )
+        )
 
+    logger.info("concatenating collected parts..")
 
-    ### filtering
-    df_train = df_train.join(top_items, on=("item_id"), how="semi").collect()
+    df_train = pl.concat(collected_train_parts)
+    del collected_train_parts
 
-    logger.info("filtered unpopular items")
+    logger.info("concatenated successfully.")
 
     df_test = pl.read_csv(args.eval_users)
-    df_pred = get_als_pred(df_train["user_id"], df_train["item_id"], df_test["user_id"], N=args.k)
+    df_pred = get_als_pred(df_train, df_test["user_id"], N=args.k)
     logger.info("got preds")
 
     df_pred.select(
