@@ -19,7 +19,18 @@ def ram_report():
     logger.info(f"RAM Available/Total/Usage: {available_gb:.2f}GB / {mem.total / (1024 ** 3):.2f}GB / {mem.percent}%")
 
 
-def get_als_pred(df_train, user_to_pred, N=160, batch_size=100, show_weight=1, click_weight=0):
+def get_als_pred(
+        df_train,
+        user_to_pred,
+        N=160,
+        batch_size=100,
+        show_weight=1,
+        click_weight=0,
+        iterations=10,
+        factors=60,
+        random_state=42,
+        calculate_training_loss=True,
+    ):
     user_ids = df_train["user_id"].unique().to_numpy()
     item_ids = df_train["item_id"].unique().to_numpy()
 
@@ -64,7 +75,12 @@ def get_als_pred(df_train, user_to_pred, N=160, batch_size=100, show_weight=1, c
     ram_report()
 
     logger.info("start fit model...")
-    model = implicit.als.AlternatingLeastSquares(iterations=10, factors=60, random_state=42, calculate_training_loss=True)
+    model = implicit.als.AlternatingLeastSquares(
+        iterations=iterations,
+        factors=factors,
+        random_state=random_state,
+        calculate_training_loss=calculate_training_loss
+    )
     model.fit(sparse_matrix, )
     logger.info("finish fit model")
 
@@ -218,7 +234,11 @@ def main():
         N=cfg_inference["top_size"],
         batch_size=cfg_inference["batch_size"],
         show_weight=cfg["show_weight"],
-        click_weight=cfg["click_weight"]
+        click_weight=cfg["click_weight"],
+        iterations=cfg["steps"],
+        factors=cfg["hidden_dim"],
+        random_state=cfg["random_state"],
+        calculate_training_loss=cfg["calculate_training_loss"],
     )
     logger.info("got preds")
 
