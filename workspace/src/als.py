@@ -30,6 +30,7 @@ def get_als_pred(
         factors=60,
         random_state=42,
         calculate_training_loss=True,
+        fallback_strategy=None
     ):
     user_ids = df_train["user_id"].unique().to_numpy()
     item_ids = df_train["item_id"].unique().to_numpy()
@@ -150,26 +151,29 @@ def get_als_pred(
 
     logger.info("exploded it")
 
-    # fallback to popular items
-    
-    logger.info(f"{len(user4pred_popular)} users to pred by popularity (cold start)")
+    if fallback_strategy == "popular":
+        # fallback to popular items
+        
+        logger.info(f"{len(user4pred_popular)} users to pred by popularity (cold start)")
 
-    logger.info(f"computed popular_top")
+        logger.info(f"computed popular_top")
 
-    df_pred_popular = pl.DataFrame(
-        {
-            'item_id': [list(popular_top["item_id"]) for _ in range(len(user4pred_popular))],
-            'user_id': user4pred_popular,
-            'scores': [list(popular_top["count"] * 1.0) for _ in range(len(user4pred_popular))]
-        }
-    )
-    df_pred_popular = df_pred_popular.explode(['item_id', 'scores']).with_columns(
-        pl.col("item_id").cast(pl.UInt32).alias("item_id"),
-        pl.col("user_id").cast(pl.UInt32).alias("user_id"),
-        pl.col("scores").cast(pl.Float64).alias("scores"),
-    )
+        df_pred_popular = pl.DataFrame(
+            {
+                'item_id': [list(popular_top["item_id"]) for _ in range(len(user4pred_popular))],
+                'user_id': user4pred_popular,
+                'scores': [list(popular_top["count"] * 1.0) for _ in range(len(user4pred_popular))]
+            }
+        )
+        df_pred_popular = df_pred_popular.explode(['item_id', 'scores']).with_columns(
+            pl.col("item_id").cast(pl.UInt32).alias("item_id"),
+            pl.col("user_id").cast(pl.UInt32).alias("user_id"),
+            pl.col("scores").cast(pl.Float64).alias("scores"),
+        )
 
-    return pl.concat([df_pred, df_pred_popular])
+        return pl.concat([df_pred, df_pred_popular])
+
+    return df_pred
 
 
 def main():
@@ -239,6 +243,7 @@ def main():
         factors=cfg["hidden_dim"],
         random_state=cfg["random_state"],
         calculate_training_loss=cfg["calculate_training_loss"],
+        fallback_strategy=cfg_inference["fallback_strategy"],
     )
     logger.info("got preds")
 
