@@ -7,9 +7,6 @@ from datetime import datetime
 from debug_constants import DEBUG_ARGV_MAKE_TRAIN, ARGV_MAKE_TRAIN_SEPARATE
 from utils import load_config, parse_args
 
-DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00"
-CONTACT_EIDS = [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]
-
 
 PRED_OPS = {
     "<":  lambda col, val: col < val,
