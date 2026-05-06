@@ -2,13 +2,15 @@ from scipy.sparse import csr_matrix
 import numpy as np
 import implicit
 import os
+import sys
 import polars as pl
-import argparse
 from loguru import logger
 from debug_constants import DEBUG_ARGV_ALS, ARGV_ALS_LOCAL_SEPARATE, SUBMIT_ARGV_ALS
 from pathlib import Path
 import time
 import psutil
+from utils import load_config
+
 
 def ram_report():
     mem = psutil.virtual_memory()
@@ -152,32 +154,14 @@ def get_als_pred(df_train, user_to_pred, N=160, batch_size=100):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--train", type=str, required=True,
-        help="Path to train file",
-    )
-    parser.add_argument(
-        "--eval-user-events", type=str, required=True,
-        help="Path to eval_user_events.pq.",
-    )
-    parser.add_argument(
-        "--eval-users", type=str, required=True,
-        help="Path to eval_users.csv (single-column user_id list).",
-    )
-    parser.add_argument(
-        "--out", type=str, default="submission_als.csv",
-        help="Output CSV path with (user_id, item_id) pairs.",
-    )
-    parser.add_argument(
-        "--k", type=int, default=160,
-        help="Items per user (matches the Recall@160 cap).",
-    )
-    args = parser.parse_args(SUBMIT_ARGV_ALS)
+    assert len(sys.argv) == 3, "please provide a path to yaml config as arguments, (training, inference)"
+    train_config_path, inference_config_path = sys.argv[1], sys.argv[2]
+    cfg = load_config(train_config_path)["training"]
+    cfg_inference = load_config(inference_config_path)["inference"]
 
     logger.info("starting pipeline...")
 
-    train_path = Path(args.train)
+    train_path = Path(cfg["train_events_path"])
     if os.path.isdir(train_path):
         full_paths = [os.path.join(train_path, fn) for fn in os.listdir(train_path) if os.path.isfile(os.path.join(train_path, fn))]
     else:
@@ -186,10 +170,10 @@ def main():
 
     collected_train_parts = []
 
-    logger.info(f"collecting part {args.eval_user_events}...")
+    logger.info(f"collecting part {cfg["eval_users_events_path"]}...")
     collected_train_parts.append(
         (
-            pl.scan_parquet(args.eval_user_events)
+            pl.scan_parquet(cfg["eval_users_events_path"])
             .select(
                 pl.col("user_id"),
                 pl.col("item_id"),
@@ -224,14 +208,19 @@ def main():
 
     logger.info("concatenated successfully.")
 
-    df_test = pl.read_csv(args.eval_users)
-    df_pred = get_als_pred(df_train, df_test["user_id"], N=args.k)
+    df_test = pl.read_csv(cfg_inference["eval_users"])
+    df_pred = get_als_pred(
+        df_train,
+        df_test["user_id"],
+        N=cfg_inference["top_size"],
+        batch_size=cfg_inference["batch_size"]
+    )
     logger.info("got preds")
 
     df_pred.select(
         pl.col("user_id"),
         pl.col("item_id")
-    ).write_csv(args.out)
+    ).write_csv(cfg_inference["eval_users_events_path"])
     logger.info("wrote submission to disk")
 
 
