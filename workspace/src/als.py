@@ -216,7 +216,9 @@ def main():
         df_train,
         df_test["user_id"],
         N=cfg_inference["top_size"],
-        batch_size=cfg_inference["batch_size"]
+        batch_size=cfg_inference["batch_size"],
+        show_weight=cfg["show_weight"],
+        click_weight=cfg["click_weight"]
     )
     logger.info("got preds")
 
