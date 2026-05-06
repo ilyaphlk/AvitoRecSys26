@@ -1,11 +1,11 @@
 import polars as pl
 import os
-import argparse
+import sys
 from pathlib import Path
 from loguru import logger
 from datetime import datetime
 from debug_constants import DEBUG_ARGV_MAKE_TRAIN, ARGV_MAKE_TRAIN_SEPARATE
-from utils import load_config, parse_args
+from utils import load_config
 
 
 PRED_OPS = {
@@ -119,8 +119,9 @@ def make_train(cfg, filename_in, filename_out):
 
 
 def main():
-    args = parse_args(ARGV_MAKE_TRAIN_SEPARATE)
-    cfg = load_config(args.config)["data"]
+    assert len(sys.argv) == 2, "please provide a path to yaml config as an argument"
+    config_path = sys.argv[1]
+    cfg = load_config(config_path)["data"]
 
     filename_in = cfg["files"]["in"]
     filename_out = cfg["files"]["out"]
