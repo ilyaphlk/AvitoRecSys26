@@ -19,18 +19,16 @@ def ram_report():
     logger.info(f"RAM Available/Total/Usage: {available_gb:.2f}GB / {mem.total / (1024 ** 3):.2f}GB / {mem.percent}%")
 
 
-def get_als_pred(
+def train(
         df_train,
         user_to_pred,
-        N=160,
-        batch_size=100,
         show_weight=1,
         click_weight=0,
         iterations=10,
         factors=60,
         random_state=42,
         calculate_training_loss=True,
-        fallback_strategy=None
+        top_size=160,
     ):
     user_ids = df_train["user_id"].unique().to_numpy()
     item_ids = df_train["item_id"].unique().to_numpy()
@@ -63,7 +61,7 @@ def get_als_pred(
         .group_by("item_id")
         .agg(pl.len().alias("count"))
         .sort(by=("count"), descending=True)
-        .head(N)
+        .head(top_size)
     )
     del df_train
     logger.debug("deleted df_train")
@@ -92,7 +90,21 @@ def get_als_pred(
 
     ram_report()
 
-    #recommendations, scores = model.recommend(user4pred_als, user_matrix, N=160, filter_already_liked_items=True)
+    return user4pred_als, user_matrix, model, item_id_to_index, user_id_to_index, user4pred_popular, popular_top
+
+def inference(
+        user4pred_als,
+        user_matrix,
+        model,
+        item_id_to_index,
+        user_id_to_index,
+        batch_size=100,
+        top_size=160,
+        fallback_strategy=None,
+        user4pred_popular=None,
+        popular_top=None,
+    ):
+
     all_recommendations = []
     all_scores = []
 
@@ -108,7 +120,7 @@ def get_als_pred(
         batch_recs, batch_scores = model.recommend(
             batch_user_ids,
             batch_user_matrix,
-            N=N,
+            N=top_size,
             filter_already_liked_items=True
         )
         logger.debug("finished recommending")
@@ -232,11 +244,9 @@ def main():
     logger.info("concatenated successfully.")
 
     df_test = pl.read_csv(cfg_inference["eval_users"])
-    df_pred = get_als_pred(
+    train_result = train(
         df_train,
         df_test["user_id"],
-        N=cfg_inference["top_size"],
-        batch_size=cfg_inference["batch_size"],
         show_weight=cfg["show_weight"],
         click_weight=cfg["click_weight"],
         iterations=cfg["steps"],
@@ -246,6 +256,21 @@ def main():
         fallback_strategy=cfg_inference["fallback_strategy"],
     )
     logger.info("got preds")
+
+    user4pred_als, user_matrix, model, item_id_to_index, user_id_to_index, user4pred_popular, popular_top = train_result
+
+    df_pred = inference(
+        user4pred_als,
+        user_matrix,
+        model,
+        item_id_to_index,
+        user_id_to_index,
+        batch_size=cfg_inference["batch_size"],
+        top_size=cfg_inference["top_size"],
+        fallback_strategy=cfg_inference["fallback_strategy"],
+        user4pred_popular=user4pred_popular,
+        popular_top=popular_top,
+    )
 
     df_pred.select(
         pl.col("user_id"),
