@@ -162,10 +162,6 @@ def main():
         help="Path to eval_user_events.pq.",
     )
     parser.add_argument(
-        "--item-features", type=str, required=True,
-        help="Path to item_features.parquet (used for vertical filter).",
-    )
-    parser.add_argument(
         "--eval-users", type=str, required=True,
         help="Path to eval_users.csv (single-column user_id list).",
     )
