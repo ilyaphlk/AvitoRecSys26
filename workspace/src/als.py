@@ -177,10 +177,6 @@ def main():
         "--k", type=int, default=160,
         help="Items per user (matches the Recall@160 cap).",
     )
-    parser.add_argument(
-        "--items-popularity-thr", type=int, default=3,
-        help="All items with less than N occurences will be removed from train.",
-    )
     args = parser.parse_args(SUBMIT_ARGV_ALS)
 
     logger.info("starting pipeline...")
