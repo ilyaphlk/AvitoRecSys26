@@ -19,7 +19,7 @@ def ram_report():
     logger.info(f"RAM Available/Total/Usage: {available_gb:.2f}GB / {mem.total / (1024 ** 3):.2f}GB / {mem.percent}%")
 
 
-def get_als_pred(df_train, user_to_pred, N=160, batch_size=100):
+def get_als_pred(df_train, user_to_pred, N=160, batch_size=100, show_weight=1, click_weight=0):
     user_ids = df_train["user_id"].unique().to_numpy()
     item_ids = df_train["item_id"].unique().to_numpy()
 
@@ -40,7 +40,10 @@ def get_als_pred(df_train, user_to_pred, N=160, batch_size=100):
 
     logger.info("made rows & cols")
 
-    values = (df_train["cnt_shows_by_user_id_item_id"] + 10 * df_train["cnt_clicks_by_user_id_item_id"]).cast(pl.Float32).to_numpy()
+    values = (
+        show_weight * df_train["cnt_shows_by_user_id_item_id"]
+        + click_weight * df_train["cnt_clicks_by_user_id_item_id"]
+    ).cast(pl.Float32).to_numpy()
 
     # for the non-als preds below
     popular_top = (
