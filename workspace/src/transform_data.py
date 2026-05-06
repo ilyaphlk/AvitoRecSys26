@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 from loguru import logger
 from datetime import datetime
-from debug_constants import DEBUG_ARGV_MAKE_TRAIN
+from debug_constants import DEBUG_ARGV_MAKE_TRAIN, ARGV_MAKE_TRAIN_SEPARATE
 import yaml
 
 DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00"
@@ -154,7 +154,7 @@ def make_train(cfg, filename_in, filename_out):
 
 
 def main():
-    args = parse_args(DEBUG_ARGV_MAKE_TRAIN)
+    args = parse_args(ARGV_MAKE_TRAIN_SEPARATE)
     cfg = load_config(args.config)["data"]
 
     filename_in = cfg["files"]["in"]
@@ -170,7 +170,7 @@ def main():
         )
     else:
         logger.info(f"Processing multiple files in {filename_in}..")
-        part_filenames = list(filter(lambda fn: fn.startswith("part_"), os.listdir(filename_in)))
+        part_filenames = sorted(list(filter(lambda fn: fn.startswith("part_"), os.listdir(filename_in))))
         newline = "\n"
         logger.info(f"Filenames to process:\n{newline.join(part_filenames)}")
 
