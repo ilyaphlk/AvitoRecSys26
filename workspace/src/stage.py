@@ -4,6 +4,7 @@ from typing import Dict, Any
 class StageStatus(Enum):
     NOT_STARTED = 0
     FINISHED = 1
+    FAILED = 2
 
 class BaseStage:
     def __init__(self, cfg, func):
@@ -42,7 +43,11 @@ class BaseStage:
     
     def run(self):
         self.assert_args_in_cfg()
-        input_artifacts = self.load_artifacts()
-        res = self.func(**{**self.kwargs, **input_artifacts})
-        self.write_artifacts(res)
+        try:
+            input_artifacts = self.load_artifacts()
+            res = self.func(**{**self.kwargs, **input_artifacts})
+            self.write_artifacts(res)
+        except Exception as e:
+            self.status = StageStatus.FAILED
+            raise e
         self.status = StageStatus.FINISHED
