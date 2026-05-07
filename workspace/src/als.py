@@ -224,7 +224,7 @@ def main():
 
     collected_train_parts = []
 
-    logger.info(f"collecting part {cfg["eval_users_events_path"]}...")
+    logger.info(f"collecting part {cfg['eval_users_events_path']}...")
     collected_train_parts.append(
         (
             pl.scan_parquet(cfg["eval_users_events_path"])
