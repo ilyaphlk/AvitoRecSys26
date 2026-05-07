@@ -272,7 +272,6 @@ def main():
         factors=cfg["hidden_dim"],
         random_state=cfg["random_state"],
         calculate_training_loss=cfg["calculate_training_loss"],
-        fallback_strategy=cfg_inference["fallback_strategy"],
     )
     logger.info("got preds")
 
