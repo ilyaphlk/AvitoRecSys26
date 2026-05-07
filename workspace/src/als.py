@@ -263,21 +263,25 @@ class ALSPreprocessStage(BaseStage):
     def load_artifacts(self):
         return dict()
 
-    def save_artifacts(self, df: pl.DataFrame):
+    def write_artifacts(self, df: pl.DataFrame):
         preprocessed_train_path = self.cfg["out_artifacts"]["preprocessed_df_path"]
-        df.sink_parquet(preprocessed_train_path)
+        df.write_parquet(preprocessed_train_path)
 
 
 def main():
     assert len(sys.argv) == 3, "please provide a path to yaml config as arguments, (training, inference)"
     train_config_path, inference_config_path = sys.argv[1], sys.argv[2]
+    preprocess_cfg = load_config(train_config_path)["preprocessing"]
     cfg = load_config(train_config_path)["training"]
     cfg_inference = load_config(inference_config_path)["inference"]
 
     logger.info("starting pipeline...")
 
-    df_train = make_train(cfg)
+    preproc_stage = ALSPreprocessStage(preprocess_cfg, make_train)
+    preproc_stage.run()
     logger.info("made train successfully.")
+
+    df_train = pl.read_parquet(preprocess_cfg["out_artifacts"]["preprocessed_df_path"])
 
     df_test = pl.read_csv(cfg_inference["eval_users"])
     train_result = train(
