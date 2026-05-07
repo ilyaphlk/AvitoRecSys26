@@ -29,6 +29,7 @@ def train(
         random_state=42,
         calculate_training_loss=True,
         top_size=160,
+        make_popular_top=True
     ):
     user_ids = df_train["user_id"].unique().to_numpy()
     item_ids = df_train["item_id"].unique().to_numpy()
@@ -55,14 +56,16 @@ def train(
         + click_weight * df_train["cnt_clicks_by_user_id_item_id"]
     ).cast(pl.Float32).to_numpy()
 
+    popular_top = None
+    if make_popular_top:
     # for the non-als preds below
-    popular_top = (
-        pl.DataFrame({"item_id": df_train["item_id"]})
-        .group_by("item_id")
-        .agg(pl.len().alias("count"))
-        .sort(by=("count"), descending=True)
-        .head(top_size)
-    )
+        popular_top = (
+            pl.DataFrame({"item_id": df_train["item_id"]})
+            .group_by("item_id")
+            .agg(pl.len().alias("count"))
+            .sort(by=("count"), descending=True)
+            .head(top_size)
+        )
     del df_train
     logger.debug("deleted df_train")
     ram_report()
@@ -103,6 +106,9 @@ def inference(
         fallback_strategy=None,
         popular_top=None,
     ):
+
+    if fallback_strategy == "popular":
+        assert popular_top is not None, "when using 'popular' fallback strategy, provide top popular items"
 
     user4pred_als_idx = np.array([user_id_to_index[i] for i in user_to_pred if i in user_id_to_index])
     user4pred_fallback = np.array([i for i in user_to_pred if i not in user_id_to_index])
@@ -164,9 +170,7 @@ def inference(
     if fallback_strategy == "popular":
         # fallback to popular items
         
-        logger.info(f"{len(user4pred_fallback)} users to pred by popularity (cold start)")
-
-        logger.info(f"computed popular_top")
+        logger.info(f"{len(user4pred_fallback)} / {len(user_to_pred)} users to pred by popularity (cold start)")
 
         df_pred_popular = pl.DataFrame(
             {
