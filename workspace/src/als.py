@@ -216,6 +216,20 @@ def inference(
 
     return df_pred
 
+def collect_train_part(fp):
+    logger.info(f"collecting part {fp}...")
+    return (
+        pl.scan_parquet(fp)
+        .select(
+            pl.col("user_id"),
+            pl.col("item_id"),
+            pl.col("cnt_shows_by_user_id_item_id"),
+            pl.col("cnt_clicks_by_user_id_item_id")
+        )
+        .group_by(["user_id", "item_id"])
+        .agg(pl.col("cnt_shows_by_user_id_item_id").first(), pl.col("cnt_clicks_by_user_id_item_id").first()).collect()
+    )
+
 
 def main():
     assert len(sys.argv) == 3, "please provide a path to yaml config as arguments, (training, inference)"
@@ -231,42 +245,11 @@ def main():
     else:
         full_paths = [train_path]
     logger.info(f"full paths to train parts: {full_paths}")
+    full_paths = [cfg['eval_users_events_path']] + sorted(full_paths)
 
-    collected_train_parts = []
-
-    logger.info(f"collecting part {cfg['eval_users_events_path']}...")
-    collected_train_parts.append(
-        (
-            pl.scan_parquet(cfg["eval_users_events_path"])
-            .select(
-                pl.col("user_id"),
-                pl.col("item_id"),
-                pl.col("cnt_shows_by_user_id_item_id"),
-                pl.col("cnt_clicks_by_user_id_item_id")
-            )
-            .group_by(["user_id", "item_id"])
-            .agg(pl.col("cnt_shows_by_user_id_item_id").first(), pl.col("cnt_clicks_by_user_id_item_id").first()).collect()
-        )
-    )
-
-    for fp in sorted(full_paths):
-        logger.info(f"collecting part {fp}...")
-        collected_train_parts.append(
-            (
-                pl.scan_parquet(fp)
-                .select(
-                    pl.col("user_id"),
-                    pl.col("item_id"),
-                    pl.col("cnt_shows_by_user_id_item_id"),
-                    pl.col("cnt_clicks_by_user_id_item_id")
-                )
-                .group_by(["user_id", "item_id"])
-                .agg(pl.col("cnt_shows_by_user_id_item_id").first(), pl.col("cnt_clicks_by_user_id_item_id").first()).collect()
-            )
-        )
+    collected_train_parts = [collect_train_part(fp) for fp in full_paths]
 
     logger.info("concatenating collected parts..")
-
     df_train = pl.concat(collected_train_parts)
     del collected_train_parts
 
