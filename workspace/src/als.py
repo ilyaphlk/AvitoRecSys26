@@ -39,7 +39,6 @@ def train(
     user_id_to_index = {user_id: idx for idx, user_id in enumerate(user_ids)}
     item_id_to_index = {item_id: idx for idx, item_id in enumerate(item_ids)}
 
-    user4pred_popular = np.array(list(set(user_to_pred) - set(user_ids)))
     n_unique_users, n_unique_items = len(user_ids), len(item_ids)
     del user_ids, item_ids
 
@@ -93,7 +92,7 @@ def train(
 
     ram_report()
 
-    return user4pred_als, user_matrix, model, item_id_to_index, user_id_to_index, user4pred_popular, popular_top
+    return user4pred_als, user_matrix, model, item_id_to_index, user_id_to_index, popular_top
 
 def inference(
         user_to_pred,
@@ -259,7 +258,7 @@ def main():
     )
     logger.info("got preds")
 
-    user4pred_als, user_matrix, model, item_id_to_index, user_id_to_index, user4pred_popular, popular_top = train_result
+    user4pred_als, user_matrix, model, item_id_to_index, user_id_to_index, popular_top = train_result
 
     df_pred = inference(
         df_test["user_id"],
