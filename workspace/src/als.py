@@ -93,7 +93,7 @@ def train(
     return user4pred_als, user_matrix, model, item_id_to_index, user_id_to_index, user4pred_popular, popular_top
 
 def inference(
-        user4pred_als,
+        user_to_pred,
         user_matrix,
         model,
         item_id_to_index,
@@ -101,18 +101,20 @@ def inference(
         batch_size=100,
         top_size=160,
         fallback_strategy=None,
-        user4pred_popular=None,
         popular_top=None,
     ):
+
+    user4pred_als_idx = np.array([user_id_to_index[i] for i in user_to_pred if i in user_id_to_index])
+    user4pred_fallback = np.array([i for i in user_to_pred if i not in user_id_to_index])
 
     all_recommendations = []
     all_scores = []
 
-    total_batches = (len(user4pred_als) + batch_size - 1) // batch_size
-    for start in range(0, len(user4pred_als), batch_size):
+    total_batches = (len(user4pred_als_idx) + batch_size - 1) // batch_size
+    for start in range(0, len(user4pred_als_idx), batch_size):
         logger.info(f"start recommending for batch {start // batch_size + 1} / {total_batches}")
-        end = min(start + batch_size, len(user4pred_als))
-        batch_user_ids = user4pred_als[start:end]
+        end = min(start + batch_size, len(user4pred_als_idx))
+        batch_user_ids = user4pred_als_idx[start:end]
         batch_user_matrix = user_matrix[start:end]
         logger.debug("copied batch into ram")
         ram_report()
@@ -132,7 +134,7 @@ def inference(
 
         logger.debug("deleted local vars explicitly")
         ram_report()
-        logger.info(f"recommended for users {start}:{end} / {len(user4pred_als)}")
+        logger.info(f"recommended for users {start}:{end} / {len(user4pred_als_idx)}")
 
 
     recommendations = np.vstack(all_recommendations)
@@ -147,12 +149,8 @@ def inference(
 
     df_pred = pl.DataFrame(
         {
-            'item_id': [
-                [index_to_item_id[i] for i in i] for i in recommendations.tolist()
-            ],
-            'user_id': [
-                index_to_user_id[i] for i in user4pred_als.tolist()
-            ],
+            'item_id': [[index_to_item_id[i] for i in i] for i in recommendations.tolist()],
+            'user_id': [index_to_user_id[i] for i in user4pred_als_idx.tolist()],
             'scores': scores.tolist()
         }
     )
@@ -166,15 +164,15 @@ def inference(
     if fallback_strategy == "popular":
         # fallback to popular items
         
-        logger.info(f"{len(user4pred_popular)} users to pred by popularity (cold start)")
+        logger.info(f"{len(user4pred_fallback)} users to pred by popularity (cold start)")
 
         logger.info(f"computed popular_top")
 
         df_pred_popular = pl.DataFrame(
             {
-                'item_id': [list(popular_top["item_id"]) for _ in range(len(user4pred_popular))],
-                'user_id': user4pred_popular,
-                'scores': [list(popular_top["count"] * 1.0) for _ in range(len(user4pred_popular))]
+                'item_id': [list(popular_top["item_id"]) for _ in range(len(user4pred_fallback))],
+                'user_id': user4pred_fallback,
+                'scores': [list(popular_top["count"] * 1.0) for _ in range(len(user4pred_fallback))]
             }
         )
         df_pred_popular = df_pred_popular.explode(['item_id', 'scores']).with_columns(
@@ -260,7 +258,7 @@ def main():
     user4pred_als, user_matrix, model, item_id_to_index, user_id_to_index, user4pred_popular, popular_top = train_result
 
     df_pred = inference(
-        user4pred_als,
+        df_test["user_id"],
         user_matrix,
         model,
         item_id_to_index,
@@ -268,7 +266,6 @@ def main():
         batch_size=cfg_inference["batch_size"],
         top_size=cfg_inference["top_size"],
         fallback_strategy=cfg_inference["fallback_strategy"],
-        user4pred_popular=user4pred_popular,
         popular_top=popular_top,
     )
 
