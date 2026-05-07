@@ -114,10 +114,11 @@ def train(
 
 def inference(
         user_to_pred,
-        user_matrix,
         model,
         item_id_to_index,
         user_id_to_index,
+        filter_already_liked_items=False,
+        user_matrix=None,
         batch_size=100,
         top_size=160,
         fallback_strategy=None,
@@ -126,6 +127,11 @@ def inference(
 
     if fallback_strategy == "popular":
         assert popular_top is not None, "when using 'popular' fallback strategy, provide top popular items"
+    
+    if filter_already_liked_items:
+        assert user_matrix is not None, "need saved user matrix for inference if filter_already_liked_items=True"
+
+    logger.debug(f"user matrix: {user_matrix}")
 
     user4pred_als_idx = np.array([user_id_to_index[i] for i in user_to_pred if i in user_id_to_index])
     user4pred_fallback = np.array([i for i in user_to_pred if i not in user_id_to_index])
@@ -138,7 +144,11 @@ def inference(
         logger.info(f"start recommending for batch {start // batch_size + 1} / {total_batches}")
         end = min(start + batch_size, len(user4pred_als_idx))
         batch_user_ids = user4pred_als_idx[start:end]
-        batch_user_matrix = user_matrix[start:end]
+        batch_user_matrix = None
+        if filter_already_liked_items:
+            batch_user_matrix = user_matrix[start:end]
+        else:
+            csr_matrix((len(batch_user_ids), model.item_factors.shape[0]))
         logger.debug("copied batch into ram")
         ram_report()
 
@@ -146,7 +156,7 @@ def inference(
             batch_user_ids,
             batch_user_matrix,
             N=top_size,
-            filter_already_liked_items=True
+            filter_already_liked_items=filter_already_liked_items
         )
         logger.debug("finished recommending")
         ram_report()
@@ -279,10 +289,11 @@ def main():
 
     df_pred = inference(
         df_test["user_id"],
-        user_matrix=train_result.user_matrix,
         model=train_result.model,
         item_id_to_index=train_result.item_id_to_index,
         user_id_to_index=train_result.user_id_to_index,
+        filter_already_liked_items=cfg_inference.get("filter_already_liked_items", False),
+        user_matrix=train_result.user_matrix,
         batch_size=cfg_inference["batch_size"],
         top_size=cfg_inference["top_size"],
         fallback_strategy=cfg_inference.get("fallback_strategy", None),
