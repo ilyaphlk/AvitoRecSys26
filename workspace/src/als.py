@@ -266,12 +266,14 @@ def main():
     train_result = train(
         df_train,
         df_test["user_id"],
-        show_weight=cfg["show_weight"],
-        click_weight=cfg["click_weight"],
         iterations=cfg["steps"],
         factors=cfg["hidden_dim"],
-        random_state=cfg["random_state"],
-        calculate_training_loss=cfg["calculate_training_loss"],
+        show_weight=cfg.get("show_weight", 1),
+        click_weight=cfg.get("click_weight", 0),
+        random_state=cfg.get("random_state", None),
+        calculate_training_loss=cfg.get("calculate_training_loss", False),
+        make_popular_top=cfg.get("make_popular_top", False),
+        make_user_matrix=cfg.get("make_user_matrix", False),
     )
     logger.info("got preds")
 
@@ -283,7 +285,7 @@ def main():
         user_id_to_index=train_result.user_id_to_index,
         batch_size=cfg_inference["batch_size"],
         top_size=cfg_inference["top_size"],
-        fallback_strategy=cfg_inference["fallback_strategy"],
+        fallback_strategy=cfg_inference.get("fallback_strategy", None),
         popular_top=train_result.popular_top,
     )
 
