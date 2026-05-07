@@ -10,6 +10,8 @@ from pathlib import Path
 import time
 import psutil
 from utils import load_config
+from dataclasses import dataclass
+from typing import Any, Dict
 
 
 def ram_report():
@@ -17,6 +19,14 @@ def ram_report():
     available_bytes = mem.available
     available_gb = available_bytes / (1024 ** 3)
     logger.info(f"RAM Available/Total/Usage: {available_gb:.2f}GB / {mem.total / (1024 ** 3):.2f}GB / {mem.percent}%")
+
+@dataclass
+class ALSTrainResult:
+    model: Any
+    item_id_to_index: Dict[int, int]
+    user_id_to_index: Dict[int, int]
+    user_matrix: Any | None
+    popular_top: Any | None
 
 
 def train(
@@ -29,7 +39,8 @@ def train(
         random_state=42,
         calculate_training_loss=True,
         top_size=160,
-        make_popular_top=True
+        make_popular_top=True,
+        make_user_matrix=True
     ):
     user_ids = df_train["user_id"].unique().to_numpy()
     item_ids = df_train["item_id"].unique().to_numpy()
@@ -65,6 +76,7 @@ def train(
             .sort(by=("count"), descending=True)
             .head(top_size)
         )
+
     del df_train
     logger.debug("deleted df_train")
     ram_report()
@@ -86,13 +98,19 @@ def train(
     logger.info("finish fit model")
 
     user4pred_als = np.array([user_id_to_index[i] for i in user_to_pred if i in user_id_to_index])
-    user_matrix = sparse_matrix[user4pred_als]
+    user_matrix = sparse_matrix[user4pred_als] if make_user_matrix else None
     del sparse_matrix
     logger.debug("deleted full matrix")
 
     ram_report()
 
-    return user4pred_als, user_matrix, model, item_id_to_index, user_id_to_index, popular_top
+    return ALSTrainResult(
+        model=model,
+        item_id_to_index=item_id_to_index,
+        user_id_to_index=user_id_to_index,
+        user_matrix=user_matrix,
+        popular_top=popular_top,
+    )
 
 def inference(
         user_to_pred,
@@ -258,18 +276,16 @@ def main():
     )
     logger.info("got preds")
 
-    user4pred_als, user_matrix, model, item_id_to_index, user_id_to_index, popular_top = train_result
-
     df_pred = inference(
         df_test["user_id"],
-        user_matrix,
-        model,
-        item_id_to_index,
-        user_id_to_index,
+        user_matrix=train_result.user_matrix,
+        model=train_result.model,
+        item_id_to_index=train_result.item_id_to_index,
+        user_id_to_index=train_result.user_id_to_index,
         batch_size=cfg_inference["batch_size"],
         top_size=cfg_inference["top_size"],
         fallback_strategy=cfg_inference["fallback_strategy"],
-        popular_top=popular_top,
+        popular_top=train_result.popular_top,
     )
 
     df_pred.select(
