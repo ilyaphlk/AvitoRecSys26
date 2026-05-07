@@ -97,8 +97,8 @@ def train(
     model.fit(sparse_matrix, )
     logger.info("finish fit model")
 
-    user4pred_als = np.array([user_id_to_index[i] for i in user_to_pred if i in user_id_to_index])
-    user_matrix = sparse_matrix[user4pred_als] if make_user_matrix else None
+    user4pred_als_idx = np.array([user_id_to_index[i] for i in user_to_pred if i in user_id_to_index])
+    user_matrix = sparse_matrix[user4pred_als_idx] if make_user_matrix else None
     del sparse_matrix
     logger.debug("deleted full matrix")
 
