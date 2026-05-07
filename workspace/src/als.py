@@ -267,7 +267,7 @@ def main():
         make_popular_top=cfg.get("make_popular_top", False),
         make_user_matrix=cfg.get("make_user_matrix", False),
     )
-    logger.info("got preds")
+    logger.info("trained model")
 
     df_pred = inference(
         df_test["user_id"],
@@ -281,6 +281,7 @@ def main():
         fallback_strategy=cfg_inference.get("fallback_strategy", None),
         popular_top=train_result.popular_top,
     )
+    logger.info("got preds")
 
     df_pred.select(
         pl.col("user_id"),
