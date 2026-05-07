@@ -12,6 +12,7 @@ import psutil
 from utils import load_config
 from dataclasses import dataclass
 from typing import Any, Dict
+from stage import BaseStage
 
 
 def ram_report():
@@ -241,6 +242,30 @@ def make_train(train_config):
 
     logger.info("concatenating collected parts..")
     return pl.concat([collect_train_part(fp) for fp in full_paths])
+
+
+class ALSPreprocessStage(BaseStage):
+    def assert_args_in_cfg(self):
+        assert all([
+            "in_artifacts" in self.cfg,
+            "train_events_path" in self.cfg["in_artifacts"],
+            "eval_users_events_path" in self.cfg["in_artifacts"],
+            "out_artifacts" in self.cfg,
+            "preprocessed_df_path" in self.cfg["out_artifacts"]
+        ])
+
+    def parse_kwargs(self):
+        return {
+            "train_events_path": self.cfg["in_artifacts"]["train_events_path"],
+            "eval_users_events_path": self.cfg["in_artifacts"]["eval_users_events_path"],
+        }
+
+    def load_artifacts(self):
+        return dict()
+
+    def save_artifacts(self, df: pl.DataFrame):
+        preprocessed_train_path = self.cfg["out_artifacts"]["preprocessed_df_path"]
+        df.sink_parquet(preprocessed_train_path)
 
 
 def main():
