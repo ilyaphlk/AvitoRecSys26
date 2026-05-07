@@ -230,6 +230,18 @@ def collect_train_part(fp):
         .agg(pl.col("cnt_shows_by_user_id_item_id").first(), pl.col("cnt_clicks_by_user_id_item_id").first()).collect()
     )
 
+def make_train(train_config):
+    train_path = Path(train_config["train_events_path"])
+    if os.path.isdir(train_path):
+        full_paths = [os.path.join(train_path, fn) for fn in os.listdir(train_path) if os.path.isfile(os.path.join(train_path, fn))]
+    else:
+        full_paths = [train_path]
+    logger.info(f"full paths to train parts: {full_paths}")
+    full_paths = [train_config["eval_users_events_path"]] + sorted(full_paths)
+
+    logger.info("concatenating collected parts..")
+    return pl.concat([collect_train_part(fp) for fp in full_paths])
+
 
 def main():
     assert len(sys.argv) == 3, "please provide a path to yaml config as arguments, (training, inference)"
@@ -239,21 +251,8 @@ def main():
 
     logger.info("starting pipeline...")
 
-    train_path = Path(cfg["train_events_path"])
-    if os.path.isdir(train_path):
-        full_paths = [os.path.join(train_path, fn) for fn in os.listdir(train_path) if os.path.isfile(os.path.join(train_path, fn))]
-    else:
-        full_paths = [train_path]
-    logger.info(f"full paths to train parts: {full_paths}")
-    full_paths = [cfg['eval_users_events_path']] + sorted(full_paths)
-
-    collected_train_parts = [collect_train_part(fp) for fp in full_paths]
-
-    logger.info("concatenating collected parts..")
-    df_train = pl.concat(collected_train_parts)
-    del collected_train_parts
-
-    logger.info("concatenated successfully.")
+    df_train = make_train(cfg)
+    logger.info("made train successfully.")
 
     df_test = pl.read_csv(cfg_inference["eval_users"])
     train_result = train(
