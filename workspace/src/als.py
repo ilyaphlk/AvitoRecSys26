@@ -265,9 +265,9 @@ class ALSPreprocessStage(BaseStage):
     def load_artifacts(self):
         return dict()
 
-    def write_artifacts(self, df: pl.DataFrame):
-        preprocessed_train_path = self.cfg["out_artifacts"]["preprocessed_df_path"]
-        df.write_parquet(preprocessed_train_path)
+    def write_artifacts(self, run_result):
+        super().write_artifacts(run_result)
+        run_result.write_parquet(self.cfg["out_artifacts"]["preprocessed_df_path"])
 
 
 class ALSTrainStage(BaseStage):
