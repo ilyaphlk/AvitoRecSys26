@@ -272,7 +272,7 @@ class ALSPreprocessStage(BaseStage):
 
 class ALSTrainStage(BaseStage):
     def assert_args_in_cfg(self):
-        return all([
+        assert all([
             "in_artifacts" in self.cfg,
             "train_path" in self.cfg["in_artifacts"],
             "eval_users_path" in self.cfg["in_artifacts"],
@@ -320,9 +320,6 @@ class ALSTrainStage(BaseStage):
         
         if self.cfg["kwargs"].get("make_user_matrix", False):
             sparse.save_npz(self.cfg["out_artifacts"]["user_matrix_path"], run_result.user_matrix)
-
-class ALSInferenceStage(BaseStage):
-    def
 
 
 def main():
