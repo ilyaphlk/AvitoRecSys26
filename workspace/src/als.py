@@ -45,6 +45,7 @@ def train(
         make_popular_top=True,
         make_user_matrix=True
     ):
+    user_to_pred = user_to_pred["user_id"]
     user_ids = df_train["user_id"].unique().to_numpy()
     item_ids = df_train["item_id"].unique().to_numpy()
 
@@ -127,6 +128,7 @@ def inference(
         fallback_strategy=None,
         popular_top=None,
     ):
+    user_to_pred = user_to_pred["user_id"]
 
     if fallback_strategy == "popular":
         assert popular_top is not None, "when using 'popular' fallback strategy, provide top popular items"
@@ -323,7 +325,7 @@ class ALSInferenceStage(BaseStage):
             "user_id_to_index" in self.cfg["in_artifacts"],
             "user_matrix" in self.cfg["in_artifacts"] or not self.cfg["kwargs"].get("filter_already_liked_items", False),
             "popular_top" in self.cfg["in_artifacts"] or not self.cfg["kwargs"].get("fallback_strategy") == "popular",
-            
+
             "out_artifacts" in self.cfg,
             "submission_path" in self.cfg["out_artifacts"]
         ])
