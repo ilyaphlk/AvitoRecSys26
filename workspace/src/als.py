@@ -304,9 +304,9 @@ class ALSTrainStage(BaseStage):
         run_result.model.save(self.cfg["out_artifacts"]["model_path"])
 
         with open(self.cfg["out_artifacts"]["item_id_to_index_path"], "w") as f:
-            json.dump(run_result.item_id_to_index, f)
+            json.dump({int(k): int(v) for k, v in run_result.item_id_to_index.items()}, f)
         with open(self.cfg["out_artifacts"]["user_id_to_index_path"], "w") as f:
-            json.dump(run_result.user_id_to_index, f)
+            json.dump({int(k): int(v) for k, v in run_result.user_id_to_index.items()}, f)
         
         if self.cfg["kwargs"].get("make_popular_top", False):
             run_result.popular_top.write_parquet(self.cfg["out_artifacts"]["popular_top_path"])
