@@ -1,4 +1,5 @@
 from scipy.sparse import csr_matrix
+from scipy import sparse
 import numpy as np
 import implicit
 import os
@@ -13,6 +14,7 @@ from utils import load_config
 from dataclasses import dataclass
 from typing import Any, Dict
 from stage import BaseStage
+import json
 
 
 def ram_report():
@@ -266,6 +268,58 @@ class ALSPreprocessStage(BaseStage):
     def write_artifacts(self, df: pl.DataFrame):
         preprocessed_train_path = self.cfg["out_artifacts"]["preprocessed_df_path"]
         df.write_parquet(preprocessed_train_path)
+
+
+class ALSTrainStage(BaseStage):
+    def assert_args_in_cfg(self):
+        return all([
+            "in_artifacts" in self.cfg,
+            "train_path" in self.cfg["in_artifacts"],
+            "eval_users_path" in self.cfg["in_artifacts"],
+
+            "kwargs" in self.cfg,
+            "iterations" in self.cfg["kwargs"],
+            "factors" in self.cfg["kwargs"],
+            
+            "out_artifacts" in self.cfg,
+            "model_path" in self.cfg["out_artifacts"],
+            "item_id_to_index_path" in self.cfg["out_artifacts"],
+            "user_id_to_index_path" in self.cfg["out_artifacts"],
+        ])
+
+    def parse_kwargs(self):
+        return {
+            "iterations": self.cfg["steps"],
+            "factors": self.cfg["hidden_dim"],
+            "show_weight": self.cfg.get("show_weight", 1),
+            "click_weight": self.cfg.get("click_weight", 0),
+            "random_state": self.cfg.get("random_state", None),
+            "calculate_training_loss": self.cfg.get("calculate_training_loss", False),
+            "make_popular_top": self.cfg.get("make_popular_top", False),
+            "make_user_matrix": self.cfg.get("make_user_matrix", False),
+        }
+
+    def load_artifacts(self):
+        return {
+            "df_train": pl.read_parquet(self.cfg["in_artifacts"]["train_path"]),
+            "user_to_pred": pl.read_csv(self.cfg["in_artifacts"]["eval_users_path"]),
+        }
+
+    def write_artifacts(self, run_result):
+        super().write_artifacts(run_result)
+
+        run_result.model.save(self.cfg["out_artifacts"]["model_path"])
+
+        with open(self.cfg["out_artifacts"]["item_id_to_index_path"], "w") as f:
+            json.dump(run_result.item_id_to_index, f)
+        with open(self.cfg["out_artifacts"]["user_id_to_index_path"], "w") as f:
+            json.dump(run_result.user_id_to_index, f)
+        
+        if self.cfg["kwargs"].get("make_popular_top", False):
+            run_result.popular_top.write_parquet(self.cfg["out_artifacts"]["popular_top_path"])
+        
+        if self.cfg["kwargs"].get("make_user_matrix", False):
+            sparse.save_npz(self.cfg["out_artifacts"]["user_matrix_path"], run_result.user_matrix)
 
 
 def main():
