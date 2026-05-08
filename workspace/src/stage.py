@@ -16,6 +16,7 @@ class BaseStage:
         """
         self.cfg = cfg
         self.func = func
+        self.assert_args_in_cfg()
         self.kwargs = self.parse_kwargs()
         self.status = StageStatus.NOT_STARTED
     
@@ -46,7 +47,6 @@ class BaseStage:
             p.parent.mkdir(parents=True, exist_ok=True)
     
     def run(self):
-        self.assert_args_in_cfg()
         try:
             input_artifacts = self.load_artifacts()
             res = self.func(**{**self.kwargs, **input_artifacts})
