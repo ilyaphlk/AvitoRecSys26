@@ -365,6 +365,9 @@ def main():
     logger.info("starting pipeline...")
 
     preproc_stage = ALSPreprocessStage(preprocess_cfg, make_train)
+    train_stage = ALSTrainStage(cfg, train)
+    inference_stage = ALSInferenceStage(cfg_inference, inference)
+
     preproc_stage.run()
     logger.info("made train successfully.")
 
@@ -383,7 +386,6 @@ def main():
     #     make_user_matrix=cfg.get("make_user_matrix", False),
     # )
 
-    train_stage = ALSTrainStage(cfg, train)
     train_stage.run()
     logger.info("trained model")
 
@@ -400,9 +402,7 @@ def main():
     #     popular_top=train_result.popular_top,
     # )
 
-    inference_stage = ALSInferenceStage(cfg_inference, inference)
     inference_stage.run()
-
     logger.info("got preds")
 
     # df_pred.select(
