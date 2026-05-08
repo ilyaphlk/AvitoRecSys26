@@ -1,5 +1,7 @@
 from enum import Enum
 from typing import Dict, Any
+from pathlib import Path
+
 
 class StageStatus(Enum):
     NOT_STARTED = 0
@@ -39,7 +41,9 @@ class BaseStage:
         """
             write run artifacts to disk
         """
-        raise NotImplementedError
+        for fp in self.cfg["out_artifacts"].values():
+            p = Path(fp)
+            p.parent.mkdir(parents=True, exist_ok=True)
     
     def run(self):
         self.assert_args_in_cfg()
