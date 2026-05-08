@@ -51,7 +51,7 @@ class BaseStage:
             input_artifacts = self.load_artifacts()
             res = self.func(**{**self.kwargs, **input_artifacts})
             self.write_artifacts(res)
+            self.status = StageStatus.FINISHED
         except Exception as e:
             self.status = StageStatus.FAILED
-            raise e
-        self.status = StageStatus.FINISHED
+            raise
