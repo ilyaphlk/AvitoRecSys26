@@ -321,6 +321,9 @@ class ALSTrainStage(BaseStage):
         if self.cfg["kwargs"].get("make_user_matrix", False):
             sparse.save_npz(self.cfg["out_artifacts"]["user_matrix_path"], run_result.user_matrix)
 
+class ALSInferenceStage(BaseStage):
+    def
+
 
 def main():
     assert len(sys.argv) == 3, "please provide a path to yaml config as arguments, (training, inference)"
@@ -335,21 +338,23 @@ def main():
     preproc_stage.run()
     logger.info("made train successfully.")
 
-    df_train = pl.read_parquet(preprocess_cfg["out_artifacts"]["preprocessed_df_path"])
+    # df_train = pl.read_parquet(preprocess_cfg["out_artifacts"]["preprocessed_df_path"])
+    # df_test = pl.read_csv(cfg_inference["eval_users"])
+    # train_result = train(
+    #     df_train,
+    #     df_test["user_id"],
+    #     iterations=cfg["steps"],
+    #     factors=cfg["hidden_dim"],
+    #     show_weight=cfg.get("show_weight", 1),
+    #     click_weight=cfg.get("click_weight", 0),
+    #     random_state=cfg.get("random_state", None),
+    #     calculate_training_loss=cfg.get("calculate_training_loss", False),
+    #     make_popular_top=cfg.get("make_popular_top", False),
+    #     make_user_matrix=cfg.get("make_user_matrix", False),
+    # )
 
-    df_test = pl.read_csv(cfg_inference["eval_users"])
-    train_result = train(
-        df_train,
-        df_test["user_id"],
-        iterations=cfg["steps"],
-        factors=cfg["hidden_dim"],
-        show_weight=cfg.get("show_weight", 1),
-        click_weight=cfg.get("click_weight", 0),
-        random_state=cfg.get("random_state", None),
-        calculate_training_loss=cfg.get("calculate_training_loss", False),
-        make_popular_top=cfg.get("make_popular_top", False),
-        make_user_matrix=cfg.get("make_user_matrix", False),
-    )
+    train_stage = ALSTrainStage(cfg, train)
+    train_stage.run()
     logger.info("trained model")
 
     df_pred = inference(
@@ -369,7 +374,7 @@ def main():
     df_pred.select(
         pl.col("user_id"),
         pl.col("item_id")
-    ).write_csv(cfg_inference["eval_users_events_path"])
+    ).write_csv(cfg_inference["out_artifacts"]["submission_path"])
     logger.info("wrote submission to disk")
 
 
