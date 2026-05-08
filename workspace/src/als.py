@@ -332,14 +332,15 @@ class ALSInferenceStage(BaseStage):
 
     def load_artifacts(self):
         in_artifacts = self.cfg["in_artifacts"]
-        return {
-            "user_to_pred": pl.read_csv(in_artifacts["eval_users"]),
-            "model": implicit.als.AlternatingLeastSquares.load(in_artifacts["model"]),
-            "item_id_to_index": json.load(in_artifacts["item_id_to_index"]),
-            "user_id_to_index": json.load(in_artifacts["user_id_to_index"]),
-            "user_matrix": sparse.load_npz(in_artifacts["user_matrix"]) if "user_matrix" in in_artifacts else None,
-            "popular_top": sparse.load_npz(in_artifacts["popular_top"]) if "popular_top" in in_artifacts else None,
-        }
+        with open(in_artifacts["item_id_to_index"]) as f_i2idx, open(in_artifacts["user_id_to_index"]) as f_u2idx:
+            return {
+                "user_to_pred": pl.read_csv(in_artifacts["eval_users"]),
+                "model": implicit.als.AlternatingLeastSquares().load(in_artifacts["model"]),
+                "item_id_to_index": json.load(f_i2idx, object_hook=lambda d: {int(k): v for k, v in d.items()}),
+                "user_id_to_index": json.load(f_u2idx, object_hook=lambda d: {int(k): v for k, v in d.items()}),
+                "user_matrix": sparse.load_npz(in_artifacts["user_matrix"]) if "user_matrix" in in_artifacts else None,
+                "popular_top": pl.read_parquet(in_artifacts["popular_top"]) if "popular_top" in in_artifacts else None,
+            }
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
