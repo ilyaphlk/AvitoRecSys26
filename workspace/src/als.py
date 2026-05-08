@@ -320,7 +320,12 @@ class ALSInferenceStage(BaseStage):
             "eval_users" in self.cfg["in_artifacts"],
             "model" in self.cfg["in_artifacts"],
             "item_id_to_index" in self.cfg["in_artifacts"],
-            "user_id_to_index" in self.cfg["in_artifacts"],  
+            "user_id_to_index" in self.cfg["in_artifacts"],
+            "user_matrix" in self.cfg["in_artifacts"] or not self.cfg["kwargs"].get("filter_already_liked_items", False),
+            "popular_top" in self.cfg["in_artifacts"] or not self.cfg["kwargs"].get("fallback_strategy") == "popular",
+            
+            "out_artifacts" in self.cfg,
+            "submission_path" in self.cfg["out_artifacts"]
         ])
 
     def load_artifacts(self):
