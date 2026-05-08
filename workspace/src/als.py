@@ -358,14 +358,14 @@ def main():
     assert len(sys.argv) == 3, "please provide a path to yaml config as arguments, (training, inference)"
     train_config_path, inference_config_path = sys.argv[1], sys.argv[2]
     preprocess_cfg = load_config(train_config_path)["preprocessing"]
-    cfg = load_config(train_config_path)["training"]
-    cfg_inference = load_config(inference_config_path)["inference"]
+    train_cfg = load_config(train_config_path)["training"]
+    inference_cfg = load_config(inference_config_path)["inference"]
 
     logger.info("starting pipeline...")
 
     preproc_stage = ALSPreprocessStage(preprocess_cfg, make_train)
-    train_stage = ALSTrainStage(cfg, train)
-    inference_stage = ALSInferenceStage(cfg_inference, inference)
+    train_stage = ALSTrainStage(train_cfg, train)
+    inference_stage = ALSInferenceStage(inference_cfg, inference)
 
     preproc_stage.run()
     logger.info("made train successfully.")
