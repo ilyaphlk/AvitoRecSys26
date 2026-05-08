@@ -276,17 +276,17 @@ class ALSTrainStage(BaseStage):
     def assert_args_in_cfg(self):
         assert all([
             "in_artifacts" in self.cfg,
-            "train_path" in self.cfg["in_artifacts"],
-            "eval_users_path" in self.cfg["in_artifacts"],
+            "train_data" in self.cfg["in_artifacts"],
+            "eval_users" in self.cfg["in_artifacts"],
 
             "kwargs" in self.cfg,
             "steps" in self.cfg["kwargs"],
             "hidden_dim" in self.cfg["kwargs"],
             
             "out_artifacts" in self.cfg,
-            "model_path" in self.cfg["out_artifacts"],
-            "item_id_to_index_path" in self.cfg["out_artifacts"],
-            "user_id_to_index_path" in self.cfg["out_artifacts"],
+            "model" in self.cfg["out_artifacts"],
+            "item_id_to_index" in self.cfg["out_artifacts"],
+            "user_id_to_index" in self.cfg["out_artifacts"],
         ])
 
     def parse_kwargs(self):
@@ -294,25 +294,25 @@ class ALSTrainStage(BaseStage):
 
     def load_artifacts(self):
         return {
-            "df_train": pl.read_parquet(self.cfg["in_artifacts"]["train_path"]),
-            "user_to_pred": pl.read_csv(self.cfg["in_artifacts"]["eval_users_path"]),
+            "df_train": pl.read_parquet(self.cfg["in_artifacts"]["train_data"]),
+            "user_to_pred": pl.read_csv(self.cfg["in_artifacts"]["eval_users"]),
         }
 
     def write_artifacts(self, run_result):
         super().write_artifacts(run_result)
 
-        run_result.model.save(self.cfg["out_artifacts"]["model_path"])
+        run_result.model.save(self.cfg["out_artifacts"]["model"])
 
-        with open(self.cfg["out_artifacts"]["item_id_to_index_path"], "w") as f:
+        with open(self.cfg["out_artifacts"]["item_id_to_index"], "w") as f:
             json.dump({int(k): int(v) for k, v in run_result.item_id_to_index.items()}, f)
-        with open(self.cfg["out_artifacts"]["user_id_to_index_path"], "w") as f:
+        with open(self.cfg["out_artifacts"]["user_id_to_index"], "w") as f:
             json.dump({int(k): int(v) for k, v in run_result.user_id_to_index.items()}, f)
         
         if self.cfg["kwargs"].get("make_popular_top", False):
-            run_result.popular_top.write_parquet(self.cfg["out_artifacts"]["popular_top_path"])
+            run_result.popular_top.write_parquet(self.cfg["out_artifacts"]["popular_top"])
         
         if self.cfg["kwargs"].get("make_user_matrix", False):
-            sparse.save_npz(self.cfg["out_artifacts"]["user_matrix_path"], run_result.user_matrix)
+            sparse.save_npz(self.cfg["out_artifacts"]["user_matrix"], run_result.user_matrix)
 
 
 class ALSInferenceStage(BaseStage):
@@ -327,7 +327,7 @@ class ALSInferenceStage(BaseStage):
             "popular_top" in self.cfg["in_artifacts"] or not self.cfg["kwargs"].get("fallback_strategy") == "popular",
 
             "out_artifacts" in self.cfg,
-            "submission_path" in self.cfg["out_artifacts"]
+            "submission" in self.cfg["out_artifacts"]
         ])
 
     def load_artifacts(self):
@@ -350,7 +350,7 @@ class ALSInferenceStage(BaseStage):
         run_result.select(
             pl.col("user_id"),
             pl.col("item_id")
-        ).write_csv(self.cfg["out_artifacts"]["submission_path"])
+        ).write_csv(self.cfg["out_artifacts"]["submission"])
 
 
 
