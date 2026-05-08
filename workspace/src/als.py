@@ -151,7 +151,7 @@ def inference(
         if filter_already_liked_items:
             batch_user_matrix = user_matrix[start:end]
         else:
-            csr_matrix((len(batch_user_ids), model.item_factors.shape[0]))
+            batch_user_matrix = csr_matrix((len(batch_user_ids), model.item_factors.shape[0]))
         logger.debug("copied batch into ram")
         ram_report()
 
