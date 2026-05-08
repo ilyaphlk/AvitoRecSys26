@@ -185,8 +185,8 @@ def inference(
 
     df_pred = pl.DataFrame(
         {
-            'item_id': [[index_to_item_id[i] for i in i] for i in recommendations.tolist()],
-            'user_id': [index_to_user_id[i] for i in user4pred_als_idx.tolist()],
+            'item_id': [[index_to_item_id[idx] for idx in row] for row in recommendations.tolist()],
+            'user_id': [index_to_user_id[idx] for idx in user4pred_als_idx.tolist()],
             'scores': scores.tolist()
         }
     )
