@@ -136,8 +136,6 @@ def inference(
     if filter_already_liked_items:
         assert user_matrix is not None, "need saved user matrix for inference if filter_already_liked_items=True"
 
-    logger.debug(f"user matrix: {user_matrix}")
-
     user4pred_als_idx = np.array([user_id_to_index[i] for i in user_to_pred if i in user_id_to_index])
     user4pred_fallback = np.array([i for i in user_to_pred if i not in user_id_to_index])
 
