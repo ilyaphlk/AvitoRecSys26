@@ -248,13 +248,11 @@ def make_train(train_events_path, eval_users_events_path):
 
 class ALSPreprocessStage(BaseStage):
     def assert_args_in_cfg(self):
-        assert all([
-            "in_artifacts" in self.cfg,
-            "train_events_path" in self.cfg["in_artifacts"],
-            "eval_users_events_path" in self.cfg["in_artifacts"],
-            "out_artifacts" in self.cfg,
-            "preprocessed_df_path" in self.cfg["out_artifacts"]
-        ])
+        assert "in_artifacts" in self.cfg
+        assert "train_events_path" in self.cfg["in_artifacts"]
+        assert "eval_users_events_path" in self.cfg["in_artifacts"]
+        assert "out_artifacts" in self.cfg
+        assert "preprocessed_df_path" in self.cfg["out_artifacts"]
 
     def parse_kwargs(self):
         return {
@@ -272,20 +270,18 @@ class ALSPreprocessStage(BaseStage):
 
 class ALSTrainStage(BaseStage):
     def assert_args_in_cfg(self):
-        assert all([
-            "in_artifacts" in self.cfg,
-            "train_data" in self.cfg["in_artifacts"],
-            "eval_users" in self.cfg["in_artifacts"],
+        assert "in_artifacts" in self.cfg
+        assert "train_data" in self.cfg["in_artifacts"]
+        assert "eval_users" in self.cfg["in_artifacts"]
 
-            "kwargs" in self.cfg,
-            "steps" in self.cfg["kwargs"],
-            "hidden_dim" in self.cfg["kwargs"],
-            
-            "out_artifacts" in self.cfg,
-            "model" in self.cfg["out_artifacts"],
-            "item_id_to_index" in self.cfg["out_artifacts"],
-            "user_id_to_index" in self.cfg["out_artifacts"],
-        ])
+        assert "kwargs" in self.cfg
+        assert "steps" in self.cfg["kwargs"]
+        assert "hidden_dim" in self.cfg["kwargs"]
+                    
+        assert "out_artifacts" in self.cfg
+        assert "model" in self.cfg["out_artifacts"]
+        assert "item_id_to_index" in self.cfg["out_artifacts"]
+        assert "user_id_to_index" in self.cfg["out_artifacts"]
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
@@ -315,18 +311,17 @@ class ALSTrainStage(BaseStage):
 
 class ALSInferenceStage(BaseStage):
     def assert_args_in_cfg(self):
-        assert all([
-            "in_artifacts" in self.cfg,
-            "eval_users" in self.cfg["in_artifacts"],
-            "model" in self.cfg["in_artifacts"],
-            "item_id_to_index" in self.cfg["in_artifacts"],
-            "user_id_to_index" in self.cfg["in_artifacts"],
-            "user_matrix" in self.cfg["in_artifacts"] or not self.cfg["kwargs"].get("filter_already_liked_items", False),
-            "popular_top" in self.cfg["in_artifacts"] or not self.cfg["kwargs"].get("fallback_strategy") == "popular",
+        assert "in_artifacts" in self.cfg
+        assert "eval_users" in self.cfg["in_artifacts"]
+        assert "model" in self.cfg["in_artifacts"]
+        assert "item_id_to_index" in self.cfg["in_artifacts"]
+        assert "user_id_to_index" in self.cfg["in_artifacts"]
+        assert "user_matrix" in self.cfg["in_artifacts"] or not self.cfg["kwargs"].get("filter_already_liked_items", False)
+        assert "popular_top" in self.cfg["in_artifacts"] or not self.cfg["kwargs"].get("fallback_strategy") == "popular"
 
-            "out_artifacts" in self.cfg,
-            "submission" in self.cfg["out_artifacts"]
-        ])
+        assert "out_artifacts" in self.cfg
+        assert "submission" in self.cfg["out_artifacts"]
+        
 
     def load_artifacts(self):
         in_artifacts = self.cfg["in_artifacts"]
