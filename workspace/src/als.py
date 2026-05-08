@@ -37,8 +37,8 @@ def train(
         user_to_pred,
         show_weight=1,
         click_weight=0,
-        iterations=10,
-        factors=60,
+        steps=10,
+        hidden_dim=60,
         random_state=42,
         calculate_training_loss=True,
         top_size=160,
@@ -92,8 +92,8 @@ def train(
 
     logger.info("start fit model...")
     model = implicit.als.AlternatingLeastSquares(
-        iterations=iterations,
-        factors=factors,
+        iterations=steps,
+        factors=hidden_dim,
         random_state=random_state,
         calculate_training_loss=calculate_training_loss
     )
@@ -278,8 +278,8 @@ class ALSTrainStage(BaseStage):
             "eval_users_path" in self.cfg["in_artifacts"],
 
             "kwargs" in self.cfg,
-            "iterations" in self.cfg["kwargs"],
-            "factors" in self.cfg["kwargs"],
+            "steps" in self.cfg["kwargs"],
+            "hidden_dim" in self.cfg["kwargs"],
             
             "out_artifacts" in self.cfg,
             "model_path" in self.cfg["out_artifacts"],
@@ -288,16 +288,7 @@ class ALSTrainStage(BaseStage):
         ])
 
     def parse_kwargs(self):
-        return {
-            "iterations": self.cfg["steps"],
-            "factors": self.cfg["hidden_dim"],
-            "show_weight": self.cfg.get("show_weight", 1),
-            "click_weight": self.cfg.get("click_weight", 0),
-            "random_state": self.cfg.get("random_state", None),
-            "calculate_training_loss": self.cfg.get("calculate_training_loss", False),
-            "make_popular_top": self.cfg.get("make_popular_top", False),
-            "make_user_matrix": self.cfg.get("make_user_matrix", False),
-        }
+        return self.cfg["kwargs"]
 
     def load_artifacts(self):
         return {
@@ -329,7 +320,7 @@ class ALSInferenceStage(BaseStage):
             "eval_users" in self.cfg["in_artifacts"],
             "model" in self.cfg["in_artifacts"],
             "item_id_to_index" in self.cfg["in_artifacts"],
-            "user_id_to_index" in self.cfg["in_artifacts"],
+            "user_id_to_index" in self.cfg["in_artifacts"],  
         ])
 
     def load_artifacts(self):
@@ -371,44 +362,10 @@ def main():
     preproc_stage.run()
     logger.info("made train successfully.")
 
-    # df_train = pl.read_parquet(preprocess_cfg["out_artifacts"]["preprocessed_df_path"])
-    # df_test = pl.read_csv(cfg_inference["eval_users"])
-    # train_result = train(
-    #     df_train,
-    #     df_test["user_id"],
-    #     iterations=cfg["steps"],
-    #     factors=cfg["hidden_dim"],
-    #     show_weight=cfg.get("show_weight", 1),
-    #     click_weight=cfg.get("click_weight", 0),
-    #     random_state=cfg.get("random_state", None),
-    #     calculate_training_loss=cfg.get("calculate_training_loss", False),
-    #     make_popular_top=cfg.get("make_popular_top", False),
-    #     make_user_matrix=cfg.get("make_user_matrix", False),
-    # )
-
     train_stage.run()
     logger.info("trained model")
 
-    # df_pred = inference(
-    #     df_test["user_id"],
-    #     model=train_result.model,
-    #     item_id_to_index=train_result.item_id_to_index,
-    #     user_id_to_index=train_result.user_id_to_index,
-    #     filter_already_liked_items=cfg_inference.get("filter_already_liked_items", False),
-    #     user_matrix=train_result.user_matrix,
-    #     batch_size=cfg_inference["batch_size"],
-    #     top_size=cfg_inference["top_size"],
-    #     fallback_strategy=cfg_inference.get("fallback_strategy", None),
-    #     popular_top=train_result.popular_top,
-    # )
-
     inference_stage.run()
-    logger.info("got preds")
-
-    # df_pred.select(
-    #     pl.col("user_id"),
-    #     pl.col("item_id")
-    # ).write_csv(cfg_inference["out_artifacts"]["submission_path"])
     logger.info("wrote submission to disk")
 
 
