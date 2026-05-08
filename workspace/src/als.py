@@ -322,6 +322,39 @@ class ALSTrainStage(BaseStage):
             sparse.save_npz(self.cfg["out_artifacts"]["user_matrix_path"], run_result.user_matrix)
 
 
+class ALSInferenceStage(BaseStage):
+    def assert_args_in_cfg(self):
+        assert all([
+            "in_artifacts" in self.cfg,
+            "eval_users" in self.cfg["in_artifacts"],
+            "model" in self.cfg["in_artifacts"],
+            "item_id_to_index" in self.cfg["in_artifacts"],
+            "user_id_to_index" in self.cfg["in_artifacts"],
+        ])
+
+    def load_artifacts(self):
+        in_artifacts = self.cfg["in_artifacts"]
+        return {
+            "user_to_pred": pl.read_csv(in_artifacts["eval_users"]),
+            "model": implicit.als.AlternatingLeastSquares.load(in_artifacts["model"]),
+            "item_id_to_index": json.load(in_artifacts["item_id_to_index"]),
+            "user_id_to_index": json.load(in_artifacts["user_id_to_index"]),
+            "user_matrix": sparse.load_npz(in_artifacts["user_matrix"]) if "user_matrix" in in_artifacts else None,
+            "popular_top": sparse.load_npz(in_artifacts["popular_top"]) if "popular_top" in in_artifacts else None,
+        }
+
+    def parse_kwargs(self):
+        return self.cfg["kwargs"]
+    
+    def write_artifacts(self, run_result):
+        super().write_artifacts(run_result)
+        run_result.select(
+            pl.col("user_id"),
+            pl.col("item_id")
+        ).write_csv(self.cfg["out_artifacts"]["submission_path"])
+
+
+
 def main():
     assert len(sys.argv) == 3, "please provide a path to yaml config as arguments, (training, inference)"
     train_config_path, inference_config_path = sys.argv[1], sys.argv[2]
@@ -354,24 +387,28 @@ def main():
     train_stage.run()
     logger.info("trained model")
 
-    df_pred = inference(
-        df_test["user_id"],
-        model=train_result.model,
-        item_id_to_index=train_result.item_id_to_index,
-        user_id_to_index=train_result.user_id_to_index,
-        filter_already_liked_items=cfg_inference.get("filter_already_liked_items", False),
-        user_matrix=train_result.user_matrix,
-        batch_size=cfg_inference["batch_size"],
-        top_size=cfg_inference["top_size"],
-        fallback_strategy=cfg_inference.get("fallback_strategy", None),
-        popular_top=train_result.popular_top,
-    )
+    # df_pred = inference(
+    #     df_test["user_id"],
+    #     model=train_result.model,
+    #     item_id_to_index=train_result.item_id_to_index,
+    #     user_id_to_index=train_result.user_id_to_index,
+    #     filter_already_liked_items=cfg_inference.get("filter_already_liked_items", False),
+    #     user_matrix=train_result.user_matrix,
+    #     batch_size=cfg_inference["batch_size"],
+    #     top_size=cfg_inference["top_size"],
+    #     fallback_strategy=cfg_inference.get("fallback_strategy", None),
+    #     popular_top=train_result.popular_top,
+    # )
+
+    inference_stage = ALSInferenceStage(cfg_inference, inference)
+    inference_stage.run()
+
     logger.info("got preds")
 
-    df_pred.select(
-        pl.col("user_id"),
-        pl.col("item_id")
-    ).write_csv(cfg_inference["out_artifacts"]["submission_path"])
+    # df_pred.select(
+    #     pl.col("user_id"),
+    #     pl.col("item_id")
+    # ).write_csv(cfg_inference["out_artifacts"]["submission_path"])
     logger.info("wrote submission to disk")
 
 
