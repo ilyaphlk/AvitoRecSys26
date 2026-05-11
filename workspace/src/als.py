@@ -203,7 +203,11 @@ def inference(
 
     logger.info("made df_pred for als recs")
 
-    df_pred = df_pred.explode(['item_id', 'scores'])
+    df_pred = df_pred.explode(['item_id', 'scores']).with_columns(
+        pl.col("item_id").cast(pl.UInt32).alias("item_id"),
+        pl.col("user_id").cast(pl.UInt32).alias("user_id"),
+        pl.col("scores").cast(pl.Float64).alias("scores"),
+    )
 
     logger.info("exploded it")
 
