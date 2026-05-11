@@ -13,6 +13,7 @@ STAGES_DICT = {
 def run_pipeline():
     assert len(sys.argv) == 2, "please provide a path to yaml config with pipeline args"
     pipeline_config_path = sys.argv[1]
+    #pipeline_config_path = "/project/workspace/config/pipeline/als_debug.yml"
 
     pipeline_cfg = load_config(pipeline_config_path)["pipeline"]
 
@@ -34,9 +35,9 @@ def run_pipeline():
     logger.info("starting pipeline...")
     with mlflow.start_run(run_name=run_name):
         for stage in stages:
-            logger.info(f"starting stage {stage["name"]}...")
+            logger.info(f"starting stage {stage['name']}...")
             stage["object"].run()
-            logger.info(f"ran stage {stage["name"]}.")
+            logger.info(f"ran stage {stage['name']}.")
 
 if __name__ == "__main__":
     run_pipeline()
