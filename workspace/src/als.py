@@ -358,9 +358,9 @@ class ALSInferenceStage(BaseStage):
 
 
 def main():
-    assert len(sys.argv) == 3, "please provide a path to yaml config as arguments, (training, inference)"
-    train_config_path, inference_config_path = sys.argv[1], sys.argv[2]
-    preprocess_cfg = load_config(train_config_path)["preprocessing"]
+    assert len(sys.argv) == 4, "please provide a path to yaml config as arguments, (preprocess, training, inference)"
+    preprocess_config_path, train_config_path, inference_config_path = sys.argv[1], sys.argv[2], sys.argv[3]
+    preprocess_cfg = load_config(preprocess_config_path)["preprocessing"]
     train_cfg = load_config(train_config_path)["training"]
     inference_cfg = load_config(inference_config_path)["inference"]
 
