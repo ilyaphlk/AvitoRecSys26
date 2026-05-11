@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any, Dict
 from stage import BaseStage
 import json
+import mlflow
 
 
 def ram_report():
@@ -100,6 +101,9 @@ def train(
     )
     model.fit(sparse_matrix, )
     logger.info("finish fit model")
+    if calculate_training_loss:
+        for i, loss in enumerate(model.training_loss):
+            mlflow.log_metric("training_loss", loss, step=i)
 
     user4pred_als_idx = np.array([user_id_to_index[i] for i in user_to_pred if i in user_id_to_index])
     user_matrix = sparse_matrix[user4pred_als_idx] if make_user_matrix else None
