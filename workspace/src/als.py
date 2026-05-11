@@ -101,7 +101,7 @@ def train(
     )
     model.fit(sparse_matrix, )
     logger.info("finish fit model")
-    if calculate_training_loss:
+    if calculate_training_loss and steps > 0:
         for i, loss in enumerate(model.training_loss):
             mlflow.log_metric("training_loss", loss, step=i)
 
