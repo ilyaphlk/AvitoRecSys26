@@ -143,6 +143,12 @@ def inference(
     user4pred_als_idx = np.array([user_id_to_index[i] for i in user_to_pred if i in user_id_to_index])
     user4pred_fallback = np.array([i for i in user_to_pred if i not in user_id_to_index])
 
+    mlflow.log_param("users_pred_by_algo_cnt", len(user4pred_als_idx))
+    mlflow.log_param("users_pred_by_algo_pct", len(user4pred_als_idx) / (len(user4pred_als_idx) + len(user4pred_fallback)))
+    if fallback_strategy is not None:
+        mlflow.log_param("users_pred_by_fallback_cnt", len(user4pred_als_idx))
+        mlflow.log_param("users_pred_by_fallback_pct", len(user4pred_fallback) / (len(user4pred_als_idx) + len(user4pred_fallback)))
+
     all_recommendations = []
     all_scores = []
 
