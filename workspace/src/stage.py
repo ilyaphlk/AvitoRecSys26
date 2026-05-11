@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Dict, Any
 from pathlib import Path
+import mlflow
 
 
 class StageStatus(Enum):
@@ -9,13 +10,14 @@ class StageStatus(Enum):
     FAILED = 2
 
 class BaseStage:
-    def __init__(self, cfg, func):
+    def __init__(self, cfg, func, run_name=None):
         """
             `cfg` - config object
             `func` - callable function, returns a result which is then written as artifacts to disk
         """
         self.cfg = cfg
         self.func = func
+        self.run_name = run_name if run_name is not None else self.__class__.__name__
         self.assert_args_in_cfg()
         self.kwargs = self.parse_kwargs()
         self.status = StageStatus.NOT_STARTED
@@ -47,11 +49,17 @@ class BaseStage:
             p.parent.mkdir(parents=True, exist_ok=True)
     
     def run(self):
-        try:
-            input_artifacts = self.load_artifacts()
-            res = self.func(**{**self.kwargs, **input_artifacts})
-            self.write_artifacts(res)
-            self.status = StageStatus.FINISHED
-        except Exception as e:
-            self.status = StageStatus.FAILED
-            raise
+        with mlflow.start_run(run_name=self.run_name, nested=True):
+            mlflow.log_params(self.kwargs)
+            mlflow.log_dict(self.cfg, artifact_file="configs/stage_config.json")
+            try:
+                input_artifacts = self.load_artifacts()
+                res = self.func(**{**self.kwargs, **input_artifacts})
+                self.write_artifacts(res)
+                self.status = StageStatus.FINISHED
+                mlflow.set_tag("status", "finished")
+            except Exception as e:
+                self.status = StageStatus.FAILED
+                mlflow.set_tag("status", "failed")
+                mlflow.set_tag("error", str(e))
+                raise

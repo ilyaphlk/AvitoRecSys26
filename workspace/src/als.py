@@ -366,18 +366,19 @@ def main():
 
     logger.info("starting pipeline...")
 
-    preproc_stage = ALSPreprocessStage(preprocess_cfg, make_train)
-    train_stage = ALSTrainStage(train_cfg, train)
-    inference_stage = ALSInferenceStage(inference_cfg, inference)
+    with mlflow.start_run(run_name="als_pipeline"):
+        preproc_stage = ALSPreprocessStage(preprocess_cfg, make_train)
+        train_stage = ALSTrainStage(train_cfg, train)
+        inference_stage = ALSInferenceStage(inference_cfg, inference)
 
-    preproc_stage.run()
-    logger.info("made train successfully.")
+        preproc_stage.run()
+        logger.info("made train successfully.")
 
-    train_stage.run()
-    logger.info("trained model")
+        train_stage.run()
+        logger.info("trained model")
 
-    inference_stage.run()
-    logger.info("wrote submission to disk")
+        inference_stage.run()
+        logger.info("wrote submission to disk")
 
 
 if __name__ == "__main__":
