@@ -1,4 +1,5 @@
 import als
+import transform_data
 import sys
 from utils import load_config
 import mlflow
@@ -8,12 +9,13 @@ STAGES_DICT = {
     "ALSPreprocessStage": (lambda cfg: als.ALSPreprocessStage(cfg, als.make_train)),
     "ALSTrainStage": (lambda cfg: als.ALSTrainStage(cfg, als.train)),
     "ALSInferenceStage": (lambda cfg: als.ALSInferenceStage(cfg, als.inference)),
+    "DataTransformStage": (lambda cfg: transform_data.DataTransformStage(cfg, transform_data.process_data))
 }
 
 def run_pipeline():
     assert len(sys.argv) == 2, "please provide a path to yaml config with pipeline args"
     pipeline_config_path = sys.argv[1]
-    # pipeline_config_path = "/project/workspace/config/pipeline/als_debug.yml"
+    # pipeline_config_path = "/project/workspace/config/pipeline/unique_users_cnt_by_item_id.yml"
 
     pipeline_cfg = load_config(pipeline_config_path)["pipeline"]
 
