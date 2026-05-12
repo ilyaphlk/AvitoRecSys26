@@ -94,7 +94,7 @@ def make_filters(cfg):
 def apply_filters(df, filter_expressions):
     return df.filter(*filter_expressions)
 
-def make_train(df, cfg):
+def make_df(df, cfg):
     agg_frames = make_aggregations(df, cfg)
     filters = make_filters(cfg)
 
@@ -113,6 +113,11 @@ def make_train(df, cfg):
     df = df.filter(*filters.values())
 
     return df
+
+def process_data(df: pl.LazyFrame | list[pl.LazyFrame], cfg):
+    if isinstance(df, list):
+        return [make_df(elem, cfg) for elem in df]
+    return make_df(df, cfg)
 
 class DataTransformStage(BaseStage):
     def assert_args_in_cfg(self):
@@ -133,8 +138,13 @@ class DataTransformStage(BaseStage):
     def load_artifacts(self):
         path_in = self.cfg["in_artifacts"]["filename_in"]
         if os.path.isdir(path_in):
-            return {"df": [pl.scan_parquet(os.path.join(path_in, part_filename)) for part_filename in sorted(os.listdir(path_in))]}
+            res = []
+            for part_filename in sorted(os.listdir(path_in)):
+                logger.debug(f"scanning {part_filename} from {path_in}...")
+                res.append(pl.scan_parquet(os.path.join(path_in, part_filename)))
+            return {"df": res}
         else:
+            logger.debug(f"scanning {path_in}...")
             return {"df": pl.scan_parquet(path_in)}
     
     def write_artifacts(self, df: pl.LazyFrame | list[pl.LazyFrame]):
@@ -144,7 +154,7 @@ class DataTransformStage(BaseStage):
         if isinstance(df, list):
             part_filenames = sorted(os.listdir(path_in))
             for elem, part_filename in zip(df, part_filenames):
-                logger.info(f"{'#'*20}\nProcessing {part_filename}...\n")
+                logger.info(f"{'#'*20}\nProcessing {part_filename} from {path_in}...\n")
                 elem.sink_parquet(
                     os.path.join(path_out, part_filename)
                 )
@@ -169,7 +179,7 @@ def main():
     mlflow.set_experiment("transform_data")
 
     with mlflow.start_run(run_name="data_transform_pipeline"):
-        preproc_stage = DataTransformStage(preprocess_cfg, make_train)
+        preproc_stage = DataTransformStage(preprocess_cfg, process_data)
         preproc_stage.run()
         logger.info("transformed data successfully.")
 
