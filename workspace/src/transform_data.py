@@ -139,7 +139,7 @@ class DataTransformStage(BaseStage):
         path_in = self.cfg["in_artifacts"]["filename_in"]
         if os.path.isdir(path_in):
             res = []
-            for part_filename in sorted(os.listdir(path_in)):
+            for part_filename in sorted(list(filter(lambda s: s.startswith("part_"), os.listdir(path_in)))):
                 logger.debug(f"scanning {part_filename} from {path_in}...")
                 res.append(pl.scan_parquet(os.path.join(path_in, part_filename)))
             return {"df": res}
@@ -152,7 +152,7 @@ class DataTransformStage(BaseStage):
         path_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
         if isinstance(df, list):
-            part_filenames = sorted(os.listdir(path_in))
+            part_filenames = sorted(list(filter(lambda s: s.startswith("part_"), os.listdir(path_in))))
             for elem, part_filename in zip(df, part_filenames):
                 logger.info(f"{'#'*20}\nProcessing {part_filename} from {path_in}...\n")
                 elem.sink_parquet(

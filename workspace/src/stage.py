@@ -2,6 +2,7 @@ from enum import Enum
 from typing import Dict, Any
 from pathlib import Path
 import mlflow
+import os
 
 
 class StageStatus(Enum):
@@ -45,7 +46,10 @@ class BaseStage:
             write run artifacts to disk
         """
         for fp in self.cfg["out_artifacts"].values():
+            if os.path.split(fp)[-1] == "":  # check if dir-like
+                fp = os.path.join(fp, "placeholder")
             p = Path(fp)
+            pp = p.parent
             p.parent.mkdir(parents=True, exist_ok=True)
     
     def run(self):
