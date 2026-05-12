@@ -161,7 +161,7 @@ def main():
     preprocess_config_path = sys.argv[1]
     # preprocess_config_path = "/project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml"
 
-    preprocess_cfg = load_config(preprocess_config_path)["data"]
+    preprocess_cfg = load_config(preprocess_config_path)["aggregate"]
 
     logger.info("starting pipeline...")
 
