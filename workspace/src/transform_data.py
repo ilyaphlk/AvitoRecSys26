@@ -98,17 +98,22 @@ def make_df(df, cfg):
     agg_frames = make_aggregations(df, cfg)
     filters = make_filters(cfg)
 
-    collected_agg_frames = dict()
+    filtered_agg_frames = dict()
     for keys, agg_frame in agg_frames.items():
         valid_filters = {fname: f for fname, f in filters.items() if fname in agg_frame.collect_schema().names()}
         agg_frame = agg_frame.filter(*valid_filters.values())
-        collected_agg_frames[keys] = agg_frame.collect()
+        filtered_agg_frames[keys] = agg_frame
 
-    for keys, agg_frame in collected_agg_frames.items():
-        df = df.join(agg_frame.lazy(), on=keys, how='semi')
+    if cfg.get("eager_execution", False):
+        filtered_agg_frames = {k: v.collect() for k, v in filtered_agg_frames.items()}
 
-    for keys, agg_frame in collected_agg_frames.items():
-        df = df.join(agg_frame.lazy(), on=keys, how='inner')
+    for keys, agg_frame in filtered_agg_frames.items():
+        agg_frame = agg_frame.lazy() if isinstance(agg_frame, pl.DataFrame) else agg_frame
+        df = df.join(agg_frame, on=keys, how='semi')
+
+    for keys, agg_frame in filtered_agg_frames.items():
+        agg_frame = agg_frame.lazy() if isinstance(agg_frame, pl.DataFrame) else agg_frame
+        df = df.join(agg_frame, on=keys, how='inner')
 
     df = df.filter(*filters.values())
 
