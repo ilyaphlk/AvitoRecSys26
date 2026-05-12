@@ -146,7 +146,7 @@ def inference(
     mlflow.log_param("users_pred_by_algo_cnt", len(user4pred_als_idx))
     mlflow.log_param("users_pred_by_algo_pct", len(user4pred_als_idx) / (len(user4pred_als_idx) + len(user4pred_fallback)))
     if fallback_strategy is not None:
-        mlflow.log_param("users_pred_by_fallback_cnt", len(user4pred_als_idx))
+        mlflow.log_param("users_pred_by_fallback_cnt", len(user4pred_fallback))
         mlflow.log_param("users_pred_by_fallback_pct", len(user4pred_fallback) / (len(user4pred_als_idx) + len(user4pred_fallback)))
 
     all_recommendations = []
