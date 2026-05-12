@@ -130,9 +130,8 @@ class DataTransformStage(BaseStage):
         assert "out_artifacts" in self.cfg
         assert "filename_out" in self.cfg["out_artifacts"]
 
-        assert (
-            os.path.isfile(self.cfg["in_artifacts"]["filename_in"]) == os.path.isfile(self.cfg["out_artifacts"]["filename_out"])
-            or not os.path.exists(self.cfg["out_artifacts"]["filename_out"])
+        assert (  #either both are files or both are dirs; out dir must end in a "/"
+            not(os.path.isdir(self.cfg["in_artifacts"]["filename_in"]) ^ (os.path.split(self.cfg["out_artifacts"]["filename_out"])[-1] == ""))
         )
 
     def load_artifacts(self):
