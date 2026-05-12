@@ -6,6 +6,7 @@ from loguru import logger
 from datetime import datetime
 from debug_constants import DEBUG_ARGV_MAKE_TRAIN, ARGV_MAKE_TRAIN_SEPARATE
 from utils import load_config
+from stage import BaseStage
 
 
 PRED_OPS = {
@@ -92,12 +93,7 @@ def make_filters(cfg):
 def apply_filters(df, filter_expressions):
     return df.filter(*filter_expressions)
 
-def make_train(cfg, filename_in, filename_out):
-    out_path = Path(filename_out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    df = pl.scan_parquet(filename_in)
-
+def make_train(df, cfg):
     agg_frames = make_aggregations(df, cfg)
     filters = make_filters(cfg)
 
@@ -115,7 +111,48 @@ def make_train(cfg, filename_in, filename_out):
 
     df = df.filter(*filters.values())
 
-    df.sink_parquet(out_path)
+    return df
+
+class DataTransformStage(BaseStage):
+    def assert_args_in_cfg(self):
+        assert "in_artifacts" in self.cfg
+        assert "filename_in" in self.cfg["in_artifacts"]
+
+        assert "kwargs" in self.cfg
+        assert "cfg" in self.cfg["kwargs"]
+
+        assert "out_artifacts" in self.cfg
+        assert "filename_out" in self.cfg["out_artifacts"]
+
+        assert (
+            os.path.isfile(self.cfg["in_artifacts"]["filename_in"]) == os.path.isfile(self.cfg["out_artifacts"]["filename_out"])
+            or not os.path.exists(self.cfg["out_artifacts"]["filename_out"])
+        )
+
+    def load_artifacts(self):
+        path_in = self.cfg["in_artifacts"]["filename_in"]
+        if os.path.isdir(path_in):
+            return {"df": [pl.scan_parquet(os.path.join(path_in, part_filename)) for part_filename in sorted(os.listdir(path_in))]}
+        else:
+            return {"df": pl.scan_parquet(path_in)}
+    
+    def write_artifacts(self, df: pl.LazyFrame | list[pl.LazyFrame]):
+        super().write_artifacts(df)
+        if isinstance(df, list):
+            path_in = self.cfg["in_artifacts"]["filename_in"]
+            path_out = self.cfg["in_artifacts"]["filename_in"]
+            part_filenames = sorted(os.listdir(path_in))
+            for elem, part_filename in zip(df, part_filenames):
+                logger.info(f"{'#'*20}\nProcessing {part_filename}...\n")
+                elem.sink_parquet(
+                    os.path.join(path_out, part_filename)
+                )
+        else:
+            logger.info(f"{'#'*20}\nProcessing {path_in}...\n")
+            df.sink_parquet(path_out)
+
+    def parse_kwargs(self):
+        return self.cfg["kwargs"]
 
 
 def main():
