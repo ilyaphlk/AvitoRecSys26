@@ -159,9 +159,14 @@ class DataTransformStage(BaseStage):
 def main():
     assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
     preprocess_config_path = sys.argv[1]
+    # preprocess_config_path = "/project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml"
+
     preprocess_cfg = load_config(preprocess_config_path)["data"]
 
     logger.info("starting pipeline...")
+
+    mlflow.set_tracking_uri("http://localhost:5000")
+    mlflow.set_experiment("transform_data")
 
     with mlflow.start_run(run_name="data_transform_pipeline"):
         preproc_stage = DataTransformStage(preprocess_cfg, make_train)
