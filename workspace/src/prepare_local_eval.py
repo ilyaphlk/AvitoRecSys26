@@ -266,12 +266,13 @@ def prepare_local_eval(
 if __name__ == "__main__":
     assert len(sys.argv) == 2, "please provide a pth to yaml config"
     cfg_path = sys.argv[1]
+    # cfg_path = "/project/workspace/config/data/eval/debug.yml"
 
     cfg = load_config(cfg_path)["prepare_eval"]
 
     assert os.path.isfile(cfg["train"]) == os.path.isfile(cfg["out"])  # either both are files or directories
 
-    if os.path.isfile(cfg["train"]) or "*" in cfg["train"]:  # process wildcard pattern as one merged file
+    if os.path.isfile(cfg["train"]) or any((c in cfg["train"]) for c in ["*", "["]):  # process wildcard pattern as one merged file
         prepare_local_eval(
             train_path=cfg["train"],
             item_features_path=cfg["item_features"],
