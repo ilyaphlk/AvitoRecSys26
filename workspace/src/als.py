@@ -134,7 +134,11 @@ def inference(
         resume_from_run_id=None,
         artifacts_dir="/project/data/artifacts",
     ):
-    resume_from_run_id = resume_from_run_id if resume_from_run_id is not None else mlflow.active_run().info.run_id
+    if resume_from_run_id is not None:
+        logger.info(f"inference will be resumed from run_id {resume_from_run_id}")
+    else:
+        resume_from_run_id = mlflow.active_run().info.run_id
+
     user_to_pred = user_to_pred["user_id"].sort()
 
     if fallback_strategy == "popular":
