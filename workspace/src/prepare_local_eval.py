@@ -76,23 +76,32 @@ def _build_candidates(
     contact_eids: list[int],
     threshold_ms: int,
     eval_start_ms: int,
+    items_stats_path: str | None = None
 ) -> pl.DataFrame:
     logger.debug("start building candidates...")
     train = pl.scan_parquet(train_path)
     synth_train = train.filter(pl.col("timestamp") < threshold_ms)
 
-    train_items_2u = (                   # select only those items, that have at least MIN_USERS_PER_ITEM unique
-        synth_train.group_by("item_id")  # users interacted with them. The list is unique by item_id
-        .agg(pl.col("user_id").n_unique().alias("n_users"))
-        .filter(pl.col("n_users") >= MIN_USERS_PER_ITEM)
-        .select("item_id")
-    )
+    train_items_2u = None
+    if items_stats_path:
+        train_items_2u = (
+            pl.scan_parquet(items_stats_path)
+            .filter(pl.col("users_unique_cnt_by_item_id") >= MIN_USERS_PER_ITEM)
+            .select(pl.col("item_id"))
+        )
+    else:
+        train_items_2u = (                   # select only those items, that have at least MIN_USERS_PER_ITEM unique
+            synth_train.group_by("item_id")  # users interacted with them. The list is unique by item_id
+            .agg(pl.col("user_id").n_unique().alias("n_users"))
+            .filter(pl.col("n_users") >= MIN_USERS_PER_ITEM)
+            .select("item_id")
+        )
     seen = synth_train.select(["user_id", "item_id"]).unique()  # for each user select item_ids already seen
 
     candidates = (
         train.filter(pl.col("timestamp") >= eval_start_ms)  # select events from eval time range,
         .filter(pl.col("eid").is_in(contact_eids))          # only contact (target) ones
-        .join(train_items_2u, on="item_id", how="inner")    # only items above popularity thr
+        .join(train_items_2u, on="item_id", how="semi")    # only items above popularity thr
         .join(seen, on=["user_id", "item_id"], how="anti")  # and only unseen by users from synth_train
         .collect()
     )
@@ -203,7 +212,8 @@ def prepare_local_eval(
     contact_eids_path: str,
     out_path: str,
     synth_threshold: str,
-    write_train_part: bool
+    write_train_part: bool,
+    items_stats_path: str | None
 ):
     """
         train_path - path to a single train file to split
@@ -226,7 +236,7 @@ def prepare_local_eval(
     logger.info(f"Contact eids: {contact_eids}")
 
     candidates = _build_candidates(  # returns events from train eligible for eval (by date and popularity thr, unseen in synth_train)
-        train_path, contact_eids, threshold_ms, eval_start_ms
+        train_path, contact_eids, threshold_ms, eval_start_ms, items_stats_path
     )
     eligible_users = candidates.select("user_id").unique().sort("user_id")  # unique users from that
 
@@ -264,13 +274,13 @@ def prepare_local_eval(
 
 
 if __name__ == "__main__":
-    assert len(sys.argv) == 2, "please provide a pth to yaml config"
-    cfg_path = sys.argv[1]
-    # cfg_path = "/project/workspace/config/data/eval/debug.yml"
+    # assert len(sys.argv) == 2, "please provide a pth to yaml config"
+    # cfg_path = sys.argv[1]
+    cfg_path = "/project/workspace/config/data/eval/debug.yml"
 
     cfg = load_config(cfg_path)["prepare_eval"]
 
-    assert os.path.isfile(cfg["train"]) == os.path.isfile(cfg["out"])  # either both are files or directories
+    assert os.path.isfile(cfg["train"]) == os.path.isfile(cfg["out"]) or not os.path.exists(cfg["out"]) # either both are files or directories
 
     if os.path.isfile(cfg["train"]) or any((c in cfg["train"]) for c in ["*", "["]):  # process wildcard pattern as one merged file
         prepare_local_eval(
@@ -279,7 +289,8 @@ if __name__ == "__main__":
             contact_eids_path=cfg["contact_eids"],
             out_path=cfg["out"],
             synth_threshold=cfg.get("synth_threshold", DEFAULT_SYNTH_THRESHOLD),
-            write_train_part=cfg.get("write_train_part", False)
+            write_train_part=cfg.get("write_train_part", False),
+            items_stats_path=cfg.get("item_stats_path", None),
         )
     else:
         logger.info(f"processing multiple files in the directory {cfg['train']}..")
@@ -297,5 +308,6 @@ if __name__ == "__main__":
                 contact_eids_path=cfg["contact_eids"],
                 out_path=out_path,
                 synth_threshold=cfg.get("synth_threshold", DEFAULT_SYNTH_THRESHOLD),
-                write_train_part=cfg.get("write_train_part", False)
+                write_train_part=cfg.get("write_train_part", False),
+                items_stats_path=cfg.get("item_stats_path", None),
             )
