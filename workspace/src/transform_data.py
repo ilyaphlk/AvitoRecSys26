@@ -7,6 +7,7 @@ from datetime import datetime
 from debug_constants import DEBUG_ARGV_MAKE_TRAIN, ARGV_MAKE_TRAIN_SEPARATE
 from utils import load_config
 from stage import BaseStage
+import mlflow
 
 
 PRED_OPS = {
@@ -156,34 +157,16 @@ class DataTransformStage(BaseStage):
 
 
 def main():
-    assert len(sys.argv) == 2, "please provide a path to yaml config as an argument"
-    config_path = sys.argv[1]
-    cfg = load_config(config_path)["data"]
+    assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
+    preprocess_config_path = sys.argv[1]
+    preprocess_cfg = load_config(preprocess_config_path)["data"]
 
-    filename_in = cfg["files"]["in"]
-    filename_out = cfg["files"]["out"]
+    logger.info("starting pipeline...")
 
-    assert os.path.isfile(filename_in) == os.path.isfile(filename_out) or not os.path.exists(filename_out)
-
-    if os.path.isfile(filename_in) or "*" in filename_in:
-        make_train(
-            cfg=cfg,
-            filename_in=filename_in,
-            filename_out=filename_out,
-        )
-    else:
-        logger.info(f"Processing multiple files in {filename_in}..")
-        part_filenames = sorted(list(filter(lambda fn: fn.startswith("part_"), os.listdir(filename_in))))
-        newline = "\n"
-        logger.info(f"Filenames to process:\n{newline.join(part_filenames)}")
-
-        for part_filename in part_filenames:
-            logger.info(f"{'#'*20}\nProcessing {part_filename}...\n")
-            make_train(
-                cfg=cfg,
-                filename_in=os.path.join(filename_in, part_filename),
-                filename_out=os.path.join(filename_out, part_filename),
-            )
+    with mlflow.start_run(run_name="data_transform_pipeline"):
+        preproc_stage = DataTransformStage(preprocess_cfg, make_train)
+        preproc_stage.run()
+        logger.info("transformed data successfully.")
 
 
 if __name__ == "__main__":
