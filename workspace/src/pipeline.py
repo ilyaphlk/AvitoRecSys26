@@ -13,7 +13,7 @@ STAGES_DICT = {
 def run_pipeline():
     assert len(sys.argv) == 2, "please provide a path to yaml config with pipeline args"
     pipeline_config_path = sys.argv[1]
-    #pipeline_config_path = "/project/workspace/config/pipeline/als_debug.yml"
+    # pipeline_config_path = "/project/workspace/config/pipeline/als_debug.yml"
 
     pipeline_cfg = load_config(pipeline_config_path)["pipeline"]
 
@@ -30,6 +30,7 @@ def run_pipeline():
             }
         )
     
+    mlflow.set_tracking_uri("http://localhost:5000")
     mlflow.set_experiment(experiment_name=experiment_name)
 
     logger.info("starting pipeline...")
