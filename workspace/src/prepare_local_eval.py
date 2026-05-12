@@ -47,6 +47,9 @@ import os
 from pathlib import Path
 
 from debug_constants import DEBUG_ARGV_PREPARE_LOCAL_EVAL
+from utils import load_config
+import sys
+
 
 # ── Constants frozen by the official v4 eval spec ─────────────────────────
 DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00"  # 1 week before real threshold
@@ -261,66 +264,37 @@ def prepare_local_eval(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--train", type=str, required=True,
-        help="Path to train.parquet — full pre-threshold clickstream.",
-    )
-    parser.add_argument(
-        "--item-features", type=str, required=True,
-        help="Path to item_features.parquet (vertical_id lookup for bucketing).",
-    )
-    parser.add_argument(
-        "--contact-eids", type=str, required=True,
-        help="Path to contact_eids.csv.",
-    )
-    parser.add_argument(
-        "--out", type=str, default="local_eval.csv",
-        help="Output CSV path (columns: user_id, item_id).",
-    )
-    parser.add_argument(
-        "--synth-threshold", type=str, default=DEFAULT_SYNTH_THRESHOLD,
-        help=(
-            "Synthetic threshold date (ISO). Events strictly before this go to "
-            "synth_train, events at/after this + 12h go to synth_eval. Default "
-            f"is {DEFAULT_SYNTH_THRESHOLD} (one week before the official eval)."
-        ),
-    )
-    parser.add_argument(
-        "--write-train-part", action="store_true",
-        help=(
-            "if set, write train events part (before synth-threshold)"
-            "of users that have been sampled to eval buckets"
-        ),
-    )
-    args = parser.parse_args()
+    assert len(sys.argv) == 2, "please provide a pth to yaml config"
+    cfg_path = sys.argv[1]
 
-    assert os.path.isfile(args.train) == os.path.isfile(args.out)  # either both are files or directories
+    cfg = load_config(cfg_path)["prepare_eval"]
 
-    if os.path.isfile(args.train) or "*" in args.train:  # process wildcard pattern as one merged file
+    assert os.path.isfile(cfg["train"]) == os.path.isfile(cfg["out"])  # either both are files or directories
+
+    if os.path.isfile(cfg["train"]) or "*" in cfg["train"]:  # process wildcard pattern as one merged file
         prepare_local_eval(
-            train_path=args.train,
-            item_features_path=args.item_features,
-            contact_eids_path=args.contact_eids,
-            out_path=args.out,
-            synth_threshold=args.synth_threshold,
-            write_train_part=args.write_train_part
+            train_path=cfg["train"],
+            item_features_path=cfg["item_features"],
+            contact_eids_path=cfg["contact_eids"],
+            out_path=cfg["out"],
+            synth_threshold=cfg.get("synth_threshold", DEFAULT_SYNTH_THRESHOLD),
+            write_train_part=cfg.get("write_train_part", False)
         )
     else:
-        logger.info(f"processing multiple files in the directory {args.train}..")
-        part_filenames = list(filter(lambda fn: fn.startswith("part_"), os.listdir(args.train)))
+        logger.info(f"processing multiple files in the directory {cfg['train']}..")
+        part_filenames = list(filter(lambda fn: fn.startswith("part_"), os.listdir(cfg["train"])))
         newline = "\n"  # py3.11 workaround
         logger.info(f"filenames to be processed: {newline.join(part_filenames)}")
         for part_filename in part_filenames:
             logger.info(f"{'#'*20}{newline}start processing {part_filename}...{newline}")
-            train_path = os.path.join(args.train, part_filename)
+            train_path = os.path.join(cfg["train"], part_filename)
             out_filename = f"eval_{Path(part_filename).stem}.csv"
-            out_path = os.path.join(args.out, out_filename)
+            out_path = os.path.join(cfg["out"], out_filename)
             prepare_local_eval(
                 train_path=train_path,
-                item_features_path=args.item_features,
-                contact_eids_path=args.contact_eids,
+                item_features_path=cfg["item_features"],
+                contact_eids_path=cfg["contact_eids"],
                 out_path=out_path,
-                synth_threshold=args.synth_threshold,
-                write_train_part=args.write_train_part
+                synth_threshold=cfg.get("synth_threshold", DEFAULT_SYNTH_THRESHOLD),
+                write_train_part=cfg.get("write_train_part", False)
             )
