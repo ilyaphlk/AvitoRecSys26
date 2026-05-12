@@ -131,8 +131,11 @@ def inference(
         top_size=160,
         fallback_strategy=None,
         popular_top=None,
+        resume_from_run_id=None,
+        artifacts_dir="/project/data/artifacts",
     ):
-    user_to_pred = user_to_pred["user_id"]
+    resume_from_run_id = resume_from_run_id if resume_from_run_id is not None else mlflow.active_run().info.run_id
+    user_to_pred = user_to_pred["user_id"].sort()
 
     if fallback_strategy == "popular":
         assert popular_top is not None, "when using 'popular' fallback strategy, provide top popular items"
@@ -149,11 +152,24 @@ def inference(
         mlflow.log_param("users_pred_by_fallback_cnt", len(user4pred_fallback))
         mlflow.log_param("users_pred_by_fallback_pct", len(user4pred_fallback) / (len(user4pred_als_idx) + len(user4pred_fallback)))
 
-    all_recommendations = []
-    all_scores = []
+    batches_dir = os.path.join(artifacts_dir, resume_from_run_id, "inference_batches")
+    Path(batches_dir).mkdir(exist_ok=True)
+    client = mlflow.MlflowClient()
+
+    last_batch = int(client.get_run(resume_from_run_id).data.tags.get("last_completed_batch", -1))
 
     total_batches = (len(user4pred_als_idx) + batch_size - 1) // batch_size
-    for start in range(0, len(user4pred_als_idx), batch_size):
+    for batch_id, start in enumerate(range(0, len(user4pred_als_idx), batch_size)):
+        batch_path = os.path.join(batches_dir, f"batch_{batch_id}.npy")
+        scores_path = os.path.join(batches_dir, f"scores_{batch_id}.npy")
+
+        if batch_id <= last_batch:
+            # assumes that batch_size is consistent across runs
+            assert os.path.exists(batch_path), f"missing artifact for completed batch: {batch_path}"
+            assert os.path.exists(scores_path), f"missing artifact for completed batch: {scores_path}"
+            logger.info(f"skip inferencing batch {batch_id}, artifact exists")
+            continue
+
         logger.info(f"start recommending for batch {start // batch_size + 1} / {total_batches}")
         end = min(start + batch_size, len(user4pred_als_idx))
         batch_user_ids = user4pred_als_idx[start:end]
@@ -174,17 +190,23 @@ def inference(
         logger.debug("finished recommending")
         ram_report()
 
-        all_recommendations.append(batch_recs)
-        all_scores.append(batch_scores)
+        np.save(batch_path, batch_recs)
+        np.save(scores_path, batch_scores)
+
         del batch_recs, batch_scores, batch_user_ids, batch_user_matrix
 
         logger.debug("deleted local vars explicitly")
         ram_report()
         logger.info(f"recommended for users {start}:{end} / {len(user4pred_als_idx)}")
+        mlflow.log_artifact(str(batch_path), artifact_path="batch_results")
+        mlflow.log_artifact(str(scores_path), artifact_path="batch_scores")
+        mlflow.log_metric("last_completed_batch", batch_id, step=batch_id)
+        mlflow.set_tag("last_completed_batch", batch_id)
 
 
-    recommendations = np.vstack(all_recommendations)
-    scores = np.vstack(all_scores)
+    # assumes that batch_size is consistent across runs
+    recommendations = np.vstack([np.load(os.path.join(batches_dir, f"batch_{i}.npy")) for i in range(total_batches)])
+    scores = np.vstack([np.load(os.path.join(batches_dir, f"scores_{i}.npy")) for i in range(total_batches)])
 
     logger.info(f"got recs for {len(recommendations)} users seen in train")
 
