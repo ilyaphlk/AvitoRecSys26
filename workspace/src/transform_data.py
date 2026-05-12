@@ -139,9 +139,9 @@ class DataTransformStage(BaseStage):
     
     def write_artifacts(self, df: pl.LazyFrame | list[pl.LazyFrame]):
         super().write_artifacts(df)
+        path_in = self.cfg["in_artifacts"]["filename_in"]
+        path_out = self.cfg["out_artifacts"]["filename_out"]
         if isinstance(df, list):
-            path_in = self.cfg["in_artifacts"]["filename_in"]
-            path_out = self.cfg["in_artifacts"]["filename_in"]
             part_filenames = sorted(os.listdir(path_in))
             for elem, part_filename in zip(df, part_filenames):
                 logger.info(f"{'#'*20}\nProcessing {part_filename}...\n")
