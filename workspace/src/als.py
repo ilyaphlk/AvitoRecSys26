@@ -153,7 +153,7 @@ def inference(
         mlflow.log_param("users_pred_by_fallback_pct", len(user4pred_fallback) / (len(user4pred_als_idx) + len(user4pred_fallback)))
 
     batches_dir = os.path.join(artifacts_dir, resume_from_run_id, "inference_batches")
-    Path(batches_dir).mkdir(exist_ok=True)
+    Path(batches_dir).mkdir(exist_ok=True, parents=True)
     client = mlflow.MlflowClient()
 
     last_batch = int(client.get_run(resume_from_run_id).data.tags.get("last_completed_batch", -1))
