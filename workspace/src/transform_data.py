@@ -108,17 +108,20 @@ def make_df(df, cfg, df_accum=None):
     if cfg.get("eager_execution", False):
         filtered_agg_frames = {k: v.collect() for k, v in filtered_agg_frames.items()}
 
-    for keys, agg_frame in filtered_agg_frames.items():
-        agg_frame = agg_frame.lazy() if isinstance(agg_frame, pl.DataFrame) else agg_frame
-        df = df.join(agg_frame, on=keys, how='semi')
+    if cfg.get("join_back", True):
+        for keys, agg_frame in filtered_agg_frames.items():
+            agg_frame = agg_frame.lazy() if isinstance(agg_frame, pl.DataFrame) else agg_frame
+            df = df.join(agg_frame, on=keys, how='semi')
 
-    for keys, agg_frame in filtered_agg_frames.items():
-        agg_frame = agg_frame.lazy() if isinstance(agg_frame, pl.DataFrame) else agg_frame
-        df = df.join(agg_frame, on=keys, how='inner')
+        for keys, agg_frame in filtered_agg_frames.items():
+            agg_frame = agg_frame.lazy() if isinstance(agg_frame, pl.DataFrame) else agg_frame
+            df = df.join(agg_frame, on=keys, how='inner')
 
-    df = df.filter(*filters.values())
+        df = df.filter(*filters.values())
 
-    return df
+        return df
+
+    return filtered_agg_frames
 
 def process_data(df: pl.LazyFrame | list[pl.LazyFrame], cfg, df_accum=None):
     if isinstance(df, list):
@@ -160,28 +163,43 @@ class DataTransformStage(BaseStage):
             logger.debug(f"scanning {path_in}...")
             return {**res, "df": pl.scan_parquet(path_in)}
     
-    def write_artifacts(self, df: pl.LazyFrame | list[pl.LazyFrame]):
-        super().write_artifacts(df)
+    def write_artifacts(self, res: pl.LazyFrame | list[pl.LazyFrame] | dict[tuple, pl.LazyFrame] | list[dict[tuple, pl.LazyFrame]]):
+        super().write_artifacts(res)
         path_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
-        if isinstance(df, list):
+        need_keys = self.cfg["kwargs"]["cfg"].get("append_keys_to_filename", True)
+        if isinstance(res, list):
             part_filenames = sorted(list(filter(lambda s: s.startswith("part_"), os.listdir(path_in))))
-            for elem, part_filename in zip(df, part_filenames):
+            for elem, part_filename in zip(res, part_filenames):
                 logger.info(f"{'#'*20}\nProcessing {part_filename} from {path_in}...\n")
-                elem.sink_parquet(
-                    os.path.join(path_out, part_filename)
-                )
+                if isinstance(elem, dict):
+                    # case of join_back: False
+                    for join_keys, df in elem.items():
+                        p = Path(part_filename)
+                        part_filename_keys = "_".join([str(p.stem), *sorted(join_keys)]) + p.suffix if need_keys else part_filename
+                        write_path = os.path.join(path_out, part_filename_keys)
+                        df.sink_parquet(write_path) if isinstance(df, pl.LazyFrame) else df.write_parquet(write_path)
+                else:
+                    write_path = os.path.join(path_out, part_filename)
+                    elem.sink_parquet(write_path) if isinstance(elem, pl.LazyFrame) else elem.write_parquet(write_path)
+
+        elif isinstance(res, dict):
+            # case of join_back: False
+            for join_keys, df in res.items():
+                p = Path(path_out)
+                write_path = "_".join([str(p.with_suffix("")), *sorted(join_keys)]) + p.suffix if need_keys else path_out
+                df.sink_parquet(write_path) if isinstance(df, pl.LazyFrame) else df.write_parquet(write_path)
         else:
             logger.info(f"{'#'*20}\nProcessing {path_in}...\n")
-            df.sink_parquet(path_out)
+            res.sink_parquet(path_out) if isinstance(res, pl.LazyFrame) else res.write_parquet(path_out)
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
 
+
 def make_empty_df(schema: dict[str, str]):
     schema = {k: getattr(pl, v) for k, v in schema.items()}
     return pl.LazyFrame(schema=schema)
-
 
 class MakeAccumStage(BaseStage):
     def assert_args_in_cfg(self):
@@ -207,26 +225,30 @@ def main():
     # preprocess_config_path = sys.argv[1]
     preprocess_config_path = "/project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml"
 
+    aggregate_cfg = load_config(preprocess_config_path)["aggregate"]
     accum_cfg = load_config(preprocess_config_path)["make_accum"]
-    preprocess_cfg = load_config(preprocess_config_path)["combine"]
+    combine_cfg = load_config(preprocess_config_path)["combine"]
 
     logger.info("starting pipeline...")
 
     mlflow.set_tracking_uri("http://localhost:5000")
     mlflow.set_experiment("transform_data")
 
-    stages = [MakeAccumStage(accum_cfg, make_empty_df)]
+    stages = [
+        # DataTransformStage(aggregate_cfg, process_data),
+        # MakeAccumStage(accum_cfg, make_empty_df),
+    ]
 
-    if preprocess_cfg["kwargs"]["cfg"].get("incremental_accum", False):
-        path_in = preprocess_cfg["in_artifacts"]["filename_in"]
+    if combine_cfg["kwargs"]["cfg"].get("incremental_accum", False):
+        path_in = combine_cfg["in_artifacts"]["filename_in"]
         part_filenames = sorted(list(filter(lambda s: s.startswith("part_"), os.listdir(path_in))))
         for part_filename in part_filenames:
             full_filename = os.path.join(path_in, part_filename)
-            preprocess_cfg_copy = copy.deepcopy(preprocess_cfg)
+            preprocess_cfg_copy = copy.deepcopy(combine_cfg)
             preprocess_cfg_copy["in_artifacts"]["filename_in"] = full_filename
             stages.append(DataTransformStage(preprocess_cfg_copy, process_data))
     else:
-        stages = [DataTransformStage(preprocess_cfg, process_data)]
+        stages.append(DataTransformStage(combine_cfg, process_data))
 
     with mlflow.start_run(run_name="data_transform_pipeline"):
         logger.info(f"total stages: {len(stages)}")
