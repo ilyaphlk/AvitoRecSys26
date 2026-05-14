@@ -6,7 +6,7 @@ from loguru import logger
 from datetime import datetime
 from debug_constants import DEBUG_ARGV_MAKE_TRAIN, ARGV_MAKE_TRAIN_SEPARATE
 from utils import load_config
-from stage import BaseStage
+from stage import BaseStage, StageStatus
 import mlflow
 import copy
 
@@ -164,7 +164,7 @@ class DataTransformStage(BaseStage):
         dir_in, filename_filter = DataTransformStage.parse_path_in(path_in)
         parts = []
         for part_filename in sorted(list(filter(filename_filter, os.listdir(dir_in)))):
-            logger.debug(f"scanning {part_filename} from {path_in}...")
+            logger.debug(f"scanning {part_filename} from {dir_in}...")
             parts.append(pl.scan_parquet(os.path.join(dir_in, part_filename)))
         return {**res, "df": parts}
 
@@ -178,7 +178,7 @@ class DataTransformStage(BaseStage):
         dir_in, filename_filter = DataTransformStage.parse_path_in(path_in)
         part_filenames = sorted(list(filter(filename_filter, os.listdir(dir_in))))
         for elem, part_filename in zip(res, part_filenames):
-            logger.info(f"{'#'*20}\nProcessing {part_filename} from {path_in}...\n")
+            logger.info(f"{'#'*20}\nProcessing {part_filename} from {dir_in}...\n")
             if isinstance(elem, dict):
                 # case of join_back: False
                 for join_keys, df in elem.items():
@@ -193,6 +193,45 @@ class DataTransformStage(BaseStage):
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
+
+
+class SequentialTransformStage(BaseStage):
+    def assert_args_in_cfg(self):
+        return DataTransformStage.assert_args_in_cfg(self)
+
+    def parse_kwargs(self):
+        return DataTransformStage.parse_kwargs(self)
+
+    def make_children_stages(self):
+        path_in = self.cfg["in_artifacts"]["filename_in"]
+
+        dir_in, filename_filter = DataTransformStage.parse_path_in(path_in)
+        part_filenames = sorted(list(filter(filename_filter, os.listdir(dir_in))))
+        logger.debug(f"making children stages for running on directory: {dir_in}, files: {part_filenames}")
+        children_stages = list()
+        for part_filename in part_filenames:
+            logger.debug(f"making children stage {part_filename} from {dir_in}...")
+            full_filename = os.path.join(dir_in, part_filename)
+            cfg_copy = copy.deepcopy(self.cfg)
+            cfg_copy["in_artifacts"]["filename_in"] = full_filename
+            children_stages.append(DataTransformStage(cfg_copy, process_data))
+        
+        return children_stages
+    
+    def run(self):
+        with mlflow.start_run(run_name=self.run_name, nested=True):
+            mlflow.log_params(self.kwargs)
+            mlflow.log_dict(self.cfg, artifact_file="configs/stage_config.json")
+            children_stages = self.make_children_stages()
+            try:
+                for stage in children_stages:
+                    stage.run()
+                mlflow.set_tag("status", "success")
+            except Exception as e:
+                self.status = StageStatus.FAILED
+                mlflow.set_tag("status", "failed")
+                mlflow.set_tag("error", str(e))
+                raise
 
 
 def make_empty_df(schema: dict[str, str]):
@@ -235,18 +274,19 @@ def main():
     stages = [
         DataTransformStage(aggregate_cfg, process_data),
         MakeAccumStage(accum_cfg, make_empty_df),
+        SequentialTransformStage(combine_cfg, process_data)
     ]
 
-    if combine_cfg["kwargs"]["cfg"].get("incremental_accum", False):
-        path_in = combine_cfg["in_artifacts"]["filename_in"]
-        part_filenames = sorted(list(filter(lambda s: s.startswith("part_"), os.listdir(path_in))))
-        for part_filename in part_filenames:
-            full_filename = os.path.join(path_in, part_filename)
-            preprocess_cfg_copy = copy.deepcopy(combine_cfg)
-            preprocess_cfg_copy["in_artifacts"]["filename_in"] = full_filename
-            stages.append(DataTransformStage(preprocess_cfg_copy, process_data))
-    else:
-        stages.append(DataTransformStage(combine_cfg, process_data))
+    # if combine_cfg["kwargs"]["cfg"].get("incremental_accum", False):
+    #     path_in = combine_cfg["in_artifacts"]["filename_in"]
+    #     part_filenames = sorted(list(filter(lambda s: s.startswith("part_"), os.listdir(path_in))))
+    #     for part_filename in part_filenames:
+    #         full_filename = os.path.join(path_in, part_filename)
+    #         preprocess_cfg_copy = copy.deepcopy(combine_cfg)
+    #         preprocess_cfg_copy["in_artifacts"]["filename_in"] = full_filename
+    #         stages.append(DataTransformStage(preprocess_cfg_copy, process_data))
+    # else:
+    #     stages.append(DataTransformStage(combine_cfg, process_data))
 
     with mlflow.start_run(run_name="data_transform_pipeline"):
         logger.info(f"total stages: {len(stages)}")
