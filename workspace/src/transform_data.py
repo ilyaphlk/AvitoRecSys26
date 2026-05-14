@@ -123,13 +123,13 @@ def make_df(df, cfg, df_accum=None):
 
     return filtered_agg_frames
 
-def process_data(df: pl.LazyFrame | list[pl.LazyFrame], cfg, df_accum=None):
-    if isinstance(df, list):
-        return [make_df(elem, cfg) for elem in df]
+def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
+    assert df_accum is None or (cfg.get("incremental_accum", False) and len(frames) == 1)
     
-    if df_accum is not None and cfg.get("incremental_accum", False):
-        df = pl.concat([df, df_accum])
-    return make_df(df, cfg)
+    if df_accum is not None and cfg.get("incremental_accum", False) and len(frames) == 1:
+        return [make_df(pl.concat([frames[0], df_accum]), cfg)]
+
+    return [make_df(elem, cfg) for elem in frames]
 
 class DataTransformStage(BaseStage):
     def assert_args_in_cfg(self):
@@ -147,51 +147,49 @@ class DataTransformStage(BaseStage):
             or (os.path.isdir(self.cfg["in_artifacts"]["filename_in"]) and self.cfg["in_artifacts"].get("filename_accum", None) is not None)
         )
 
+    @staticmethod
+    def parse_path_in(path_in):
+        if os.path.isdir(path_in):
+            return path_in, lambda s: s.startswith("part_")
+
+        return str(Path(path_in).parent), lambda s: s == str(Path(path_in).name)
+
     def load_artifacts(self):
         path_in = self.cfg["in_artifacts"]["filename_in"]
         df_accum = None
         if "filename_accum" in self.cfg["in_artifacts"]:
             df_accum = pl.scan_parquet(self.cfg["in_artifacts"]["filename_accum"])
         res = {"df_accum": df_accum}
-        if os.path.isdir(path_in):
-            parts = []
-            for part_filename in sorted(list(filter(lambda s: s.startswith("part_"), os.listdir(path_in)))):
-                logger.debug(f"scanning {part_filename} from {path_in}...")
-                parts.append(pl.scan_parquet(os.path.join(path_in, part_filename)))
-            return {**res, "df": parts}
-        else:
-            logger.debug(f"scanning {path_in}...")
-            return {**res, "df": pl.scan_parquet(path_in)}
+
+        dir_in, filename_filter = DataTransformStage.parse_path_in(path_in)
+        parts = []
+        for part_filename in sorted(list(filter(filename_filter, os.listdir(dir_in)))):
+            logger.debug(f"scanning {part_filename} from {path_in}...")
+            parts.append(pl.scan_parquet(os.path.join(dir_in, part_filename)))
+        return {**res, "df": parts}
+
     
-    def write_artifacts(self, res: pl.LazyFrame | list[pl.LazyFrame] | dict[tuple, pl.LazyFrame] | list[dict[tuple, pl.LazyFrame]]):
+    def write_artifacts(self, res: list[pl.LazyFrame | pl.DataFrame] | list[dict[tuple, pl.LazyFrame | pl.DataFrame]]):
         super().write_artifacts(res)
         path_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
         need_keys = self.cfg["kwargs"]["cfg"].get("append_keys_to_filename", True)
-        if isinstance(res, list):
-            part_filenames = sorted(list(filter(lambda s: s.startswith("part_"), os.listdir(path_in))))
-            for elem, part_filename in zip(res, part_filenames):
-                logger.info(f"{'#'*20}\nProcessing {part_filename} from {path_in}...\n")
-                if isinstance(elem, dict):
-                    # case of join_back: False
-                    for join_keys, df in elem.items():
-                        p = Path(part_filename)
-                        part_filename_keys = "_".join([str(p.stem), *sorted(join_keys)]) + p.suffix if need_keys else part_filename
-                        write_path = os.path.join(path_out, part_filename_keys)
-                        df.sink_parquet(write_path) if isinstance(df, pl.LazyFrame) else df.write_parquet(write_path)
-                else:
-                    write_path = os.path.join(path_out, part_filename)
-                    elem.sink_parquet(write_path) if isinstance(elem, pl.LazyFrame) else elem.write_parquet(write_path)
 
-        elif isinstance(res, dict):
-            # case of join_back: False
-            for join_keys, df in res.items():
-                p = Path(path_out)
-                write_path = "_".join([str(p.with_suffix("")), *sorted(join_keys)]) + p.suffix if need_keys else path_out
-                df.sink_parquet(write_path) if isinstance(df, pl.LazyFrame) else df.write_parquet(write_path)
-        else:
-            logger.info(f"{'#'*20}\nProcessing {path_in}...\n")
-            res.sink_parquet(path_out) if isinstance(res, pl.LazyFrame) else res.write_parquet(path_out)
+        dir_in, filename_filter = DataTransformStage.parse_path_in(path_in)
+        part_filenames = sorted(list(filter(filename_filter, os.listdir(dir_in))))
+        for elem, part_filename in zip(res, part_filenames):
+            logger.info(f"{'#'*20}\nProcessing {part_filename} from {path_in}...\n")
+            if isinstance(elem, dict):
+                # case of join_back: False
+                for join_keys, df in elem.items():
+                    p = Path(part_filename)
+                    part_filename_keys = "_".join([str(p.stem), *sorted(join_keys)]) + p.suffix if need_keys else part_filename
+                    write_path = os.path.join(path_out, part_filename_keys)
+                    df.sink_parquet(write_path) if isinstance(df, pl.LazyFrame) else df.write_parquet(write_path)
+            else:
+                write_path = os.path.join(path_out, part_filename) if os.path.isdir(path_out) else path_out
+                elem.sink_parquet(write_path) if isinstance(elem, pl.LazyFrame) else elem.write_parquet(write_path)
+
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
@@ -235,8 +233,8 @@ def main():
     mlflow.set_experiment("transform_data")
 
     stages = [
-        # DataTransformStage(aggregate_cfg, process_data),
-        # MakeAccumStage(accum_cfg, make_empty_df),
+        DataTransformStage(aggregate_cfg, process_data),
+        MakeAccumStage(accum_cfg, make_empty_df),
     ]
 
     if combine_cfg["kwargs"]["cfg"].get("incremental_accum", False):
