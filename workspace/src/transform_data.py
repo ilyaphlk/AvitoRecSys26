@@ -195,17 +195,26 @@ class DataTransformStage(BaseStage):
         return self.cfg["kwargs"]
 
 
-class SequentialTransformStage(BaseStage):
+class SequentialStage(BaseStage):
+    def __init__(self, cfg, stage_class, func, run_name=None):
+        """
+            `cfg` - config object
+            `func` - callable function, returns a result which is then written as artifacts to disk
+            `stage_class` - class to build with
+        """
+        self.stage_class = stage_class
+        super().__init__(cfg, func, run_name)
+
     def assert_args_in_cfg(self):
-        return DataTransformStage.assert_args_in_cfg(self)
+        return self.stage_class.assert_args_in_cfg(self)
 
     def parse_kwargs(self):
-        return DataTransformStage.parse_kwargs(self)
+        return self.stage_class.parse_kwargs(self)
 
     def make_children_stages(self):
         path_in = self.cfg["in_artifacts"]["filename_in"]
 
-        dir_in, filename_filter = DataTransformStage.parse_path_in(path_in)
+        dir_in, filename_filter = self.stage_class.parse_path_in(path_in)
         part_filenames = sorted(list(filter(filename_filter, os.listdir(dir_in))))
         logger.debug(f"making children stages for running on directory: {dir_in}, files: {part_filenames}")
         children_stages = list()
@@ -214,7 +223,7 @@ class SequentialTransformStage(BaseStage):
             full_filename = os.path.join(dir_in, part_filename)
             cfg_copy = copy.deepcopy(self.cfg)
             cfg_copy["in_artifacts"]["filename_in"] = full_filename
-            children_stages.append(DataTransformStage(cfg_copy, process_data))
+            children_stages.append(self.stage_class(cfg_copy, self.func))
         
         return children_stages
     
@@ -274,7 +283,7 @@ def main():
     stages = [
         DataTransformStage(aggregate_cfg, process_data),
         MakeAccumStage(accum_cfg, make_empty_df),
-        SequentialTransformStage(combine_cfg, process_data)
+        SequentialStage(combine_cfg, DataTransformStage, process_data)
     ]
 
     with mlflow.start_run(run_name="data_transform_pipeline"):
