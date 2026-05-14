@@ -166,7 +166,7 @@ class DataTransformStage(BaseStage):
         for part_filename in sorted(list(filter(filename_filter, os.listdir(dir_in)))):
             logger.debug(f"scanning {part_filename} from {dir_in}...")
             parts.append(pl.scan_parquet(os.path.join(dir_in, part_filename)))
-        return {**res, "df": parts}
+        return {**res, "frames": parts}
 
     
     def write_artifacts(self, res: list[pl.LazyFrame | pl.DataFrame] | list[dict[tuple, pl.LazyFrame | pl.DataFrame]]):
@@ -184,7 +184,7 @@ class DataTransformStage(BaseStage):
                 for join_keys, df in elem.items():
                     p = Path(part_filename)
                     part_filename_keys = "_".join([str(p.stem), *sorted(join_keys)]) + p.suffix if need_keys else part_filename
-                    write_path = os.path.join(path_out, part_filename_keys)
+                    write_path = os.path.join(path_out, part_filename_keys) if os.path.isdir(path_out) else path_out
                     df.sink_parquet(write_path) if isinstance(df, pl.LazyFrame) else df.write_parquet(write_path)
             else:
                 write_path = os.path.join(path_out, part_filename) if os.path.isdir(path_out) else path_out
@@ -258,9 +258,9 @@ class MakeAccumStage(BaseStage):
         run_result.sink_parquet(path_out)
 
 def main():
-    # assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
-    # preprocess_config_path = sys.argv[1]
-    preprocess_config_path = "/project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml"
+    assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
+    preprocess_config_path = sys.argv[1]
+    # preprocess_config_path = "/project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml"
 
     aggregate_cfg = load_config(preprocess_config_path)["aggregate"]
     accum_cfg = load_config(preprocess_config_path)["make_accum"]
@@ -276,17 +276,6 @@ def main():
         MakeAccumStage(accum_cfg, make_empty_df),
         SequentialTransformStage(combine_cfg, process_data)
     ]
-
-    # if combine_cfg["kwargs"]["cfg"].get("incremental_accum", False):
-    #     path_in = combine_cfg["in_artifacts"]["filename_in"]
-    #     part_filenames = sorted(list(filter(lambda s: s.startswith("part_"), os.listdir(path_in))))
-    #     for part_filename in part_filenames:
-    #         full_filename = os.path.join(path_in, part_filename)
-    #         preprocess_cfg_copy = copy.deepcopy(combine_cfg)
-    #         preprocess_cfg_copy["in_artifacts"]["filename_in"] = full_filename
-    #         stages.append(DataTransformStage(preprocess_cfg_copy, process_data))
-    # else:
-    #     stages.append(DataTransformStage(combine_cfg, process_data))
 
     with mlflow.start_run(run_name="data_transform_pipeline"):
         logger.info(f"total stages: {len(stages)}")
