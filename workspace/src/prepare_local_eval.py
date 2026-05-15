@@ -51,6 +51,7 @@ from utils import load_config
 import sys
 from stage import BaseStage
 import mlflow
+from transform_data import SequentialStage, parse_path_in
 
 # ── Constants frozen by the official v4 eval spec ─────────────────────────
 DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00"  # 1 week before real threshold
@@ -268,7 +269,7 @@ def prepare_local_eval(
 class PrepareLocalEvalStage(BaseStage):
     def assert_args_in_cfg(self):
         assert "in_artifacts" in self.cfg
-        assert "train_path" in self.cfg["in_artifacts"]
+        assert "filename_in" in self.cfg["in_artifacts"]
         assert "item_features_path" in self.cfg["in_artifacts"]
         assert "contact_eids_path" in self.cfg["in_artifacts"]
 
@@ -277,7 +278,7 @@ class PrepareLocalEvalStage(BaseStage):
 
     def load_artifacts(self):
         return {
-            "train_path": self.cfg["in_artifacts"]["train_path"],
+            "train_path": self.cfg["in_artifacts"]["filename_in"],
             "item_features_path": self.cfg["in_artifacts"]["item_features_path"],
             "contact_eids_path": self.cfg["in_artifacts"]["contact_eids_path"],
             "out_path": self.cfg["out_artifacts"]["out_path"],
@@ -313,46 +314,14 @@ class PrepareLocalEvalStage(BaseStage):
 
 
 if __name__ == "__main__":
-    # assert len(sys.argv) == 2, "please provide a pth to yaml config"
-    # cfg_path = sys.argv[1]
-    cfg_path = "/project/workspace/config/data/eval/debug_stage.yml"
+    assert len(sys.argv) == 2, "please provide a pth to yaml config"
+    cfg_path = sys.argv[1]
+    # cfg_path = "/project/workspace/config/data/eval/debug_stage.yml"
 
     cfg = load_config(cfg_path)["prepare_eval"]
 
     mlflow.set_tracking_uri("http://localhost:5000")
     mlflow.set_experiment("prepare_local_eval")
 
-    stage = PrepareLocalEvalStage(cfg, prepare_local_eval)
+    stage = SequentialStage(cfg, PrepareLocalEvalStage, prepare_local_eval)
     stage.run()
-
-    # assert os.path.isfile(cfg["train"]) == os.path.isfile(cfg["out"]) or not os.path.exists(cfg["out"]) # either both are files or directories
-
-    # if os.path.isfile(cfg["train"]) or any((c in cfg["train"]) for c in ["*", "["]):  # process wildcard pattern as one merged file
-    #     prepare_local_eval(
-    #         train_path=cfg["train"],
-    #         item_features_path=cfg["item_features"],
-    #         contact_eids_path=cfg["contact_eids"],
-    #         out_path=cfg["out"],
-    #         synth_threshold=cfg.get("synth_threshold", DEFAULT_SYNTH_THRESHOLD),
-    #         write_train_part=cfg.get("write_train_part", False),
-    #         items_blacklist_path=cfg.get("items_blacklist_path", None),
-    #     )
-    # else:
-    #     logger.info(f"processing multiple files in the directory {cfg['train']}..")
-    #     part_filenames = list(filter(lambda fn: fn.startswith("part_"), os.listdir(cfg["train"])))
-    #     newline = "\n"  # py3.11 workaround
-    #     logger.info(f"filenames to be processed: {newline.join(part_filenames)}")
-    #     for part_filename in part_filenames:
-    #         logger.info(f"{'#'*20}{newline}start processing {part_filename}...{newline}")
-    #         train_path = os.path.join(cfg["train"], part_filename)
-    #         out_filename = f"eval_{Path(part_filename).stem}.csv"
-    #         out_path = os.path.join(cfg["out"], out_filename)
-    #         prepare_local_eval(
-    #             train_path=train_path,
-    #             item_features_path=cfg["item_features"],
-    #             contact_eids_path=cfg["contact_eids"],
-    #             out_path=out_path,
-    #             synth_threshold=cfg.get("synth_threshold", DEFAULT_SYNTH_THRESHOLD),
-    #             write_train_part=cfg.get("write_train_part", False),
-    #             items_blacklist_path=cfg.get("items_blacklist_path", None),
-    #         )
