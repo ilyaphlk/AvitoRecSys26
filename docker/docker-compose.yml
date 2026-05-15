@@ -12,4 +12,4 @@ services:
     environment:
       - PYTHONPATH=/project
       - SSH_AUTH_SOCK=/ssh-agent
-    command: sleep infinity
+    command: python -m mlflow server --port 5000 --host 0.0.0.0 --backend-store-uri /project/mlflow/runs --default-artifact-root /project/mlflow/artifacts & sleep infinity
