@@ -131,6 +131,14 @@ def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
 
     return [make_df(elem, cfg) for elem in frames]
 
+
+def parse_path_in(path_in):
+        if os.path.isdir(path_in):
+            return path_in, lambda s: s.startswith("part_")
+
+        return str(Path(path_in).parent), lambda s: s == str(Path(path_in).name)
+
+
 class DataTransformStage(BaseStage):
     def assert_args_in_cfg(self):
         assert "in_artifacts" in self.cfg
@@ -145,14 +153,7 @@ class DataTransformStage(BaseStage):
         assert (  #either both are files or both are dirs; out dir must end in a "/"
             not(os.path.isdir(self.cfg["in_artifacts"]["filename_in"]) ^ (os.path.split(self.cfg["out_artifacts"]["filename_out"])[-1] == ""))
             or (os.path.isdir(self.cfg["in_artifacts"]["filename_in"]) and self.cfg["in_artifacts"].get("filename_accum", None) is not None)
-        )
-
-    @staticmethod
-    def parse_path_in(path_in):
-        if os.path.isdir(path_in):
-            return path_in, lambda s: s.startswith("part_")
-
-        return str(Path(path_in).parent), lambda s: s == str(Path(path_in).name)
+        )    
 
     def load_artifacts(self):
         path_in = self.cfg["in_artifacts"]["filename_in"]
@@ -161,7 +162,7 @@ class DataTransformStage(BaseStage):
             df_accum = pl.scan_parquet(self.cfg["in_artifacts"]["filename_accum"])
         res = {"df_accum": df_accum}
 
-        dir_in, filename_filter = DataTransformStage.parse_path_in(path_in)
+        dir_in, filename_filter = parse_path_in(path_in)
         parts = []
         for part_filename in sorted(list(filter(filename_filter, os.listdir(dir_in)))):
             logger.debug(f"scanning {part_filename} from {dir_in}...")
@@ -175,7 +176,7 @@ class DataTransformStage(BaseStage):
         path_out = self.cfg["out_artifacts"]["filename_out"]
         need_keys = self.cfg["kwargs"]["cfg"].get("append_keys_to_filename", True)
 
-        dir_in, filename_filter = DataTransformStage.parse_path_in(path_in)
+        dir_in, filename_filter = parse_path_in(path_in)
         part_filenames = sorted(list(filter(filename_filter, os.listdir(dir_in))))
         for elem, part_filename in zip(res, part_filenames):
             logger.info(f"{'#'*20}\nProcessing {part_filename} from {dir_in}...\n")
@@ -214,7 +215,7 @@ class SequentialStage(BaseStage):
     def make_children_stages(self):
         path_in = self.cfg["in_artifacts"]["filename_in"]
 
-        dir_in, filename_filter = self.stage_class.parse_path_in(path_in)
+        dir_in, filename_filter = parse_path_in(path_in)
         part_filenames = sorted(list(filter(filename_filter, os.listdir(dir_in))))
         logger.debug(f"making children stages for running on directory: {dir_in}, files: {part_filenames}")
         children_stages = list()
@@ -267,9 +268,9 @@ class MakeAccumStage(BaseStage):
         run_result.sink_parquet(path_out)
 
 def main():
-    assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
-    preprocess_config_path = sys.argv[1]
-    # preprocess_config_path = "/project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml"
+    # assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
+    # preprocess_config_path = sys.argv[1]
+    preprocess_config_path = "/project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml"
 
     aggregate_cfg = load_config(preprocess_config_path)["aggregate"]
     accum_cfg = load_config(preprocess_config_path)["make_accum"]
