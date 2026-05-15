@@ -49,7 +49,8 @@ from pathlib import Path
 from debug_constants import DEBUG_ARGV_PREPARE_LOCAL_EVAL
 from utils import load_config
 import sys
-
+from stage import BaseStage
+import mlflow
 
 # ── Constants frozen by the official v4 eval spec ─────────────────────────
 DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00"  # 1 week before real threshold
@@ -213,9 +214,9 @@ def prepare_local_eval(
     item_features_path: str,
     contact_eids_path: str,
     out_path: str,
-    synth_threshold: str,
-    write_train_part: bool,
-    items_blacklist_path: str | None
+    synth_threshold: str = DEFAULT_SYNTH_THRESHOLD,
+    write_train_part: bool = False,
+    items_blacklist_path: str | None = None
 ):
     """
         train_path - path to a single train file to split
@@ -245,20 +246,13 @@ def prepare_local_eval(
     sampled = _build_user_sample(  # user_id, bucket - df sampled by bucket
         train_path, item_features_path, threshold_ms, eligible_users
     )
-
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    users_path = out_path.with_stem("users_" + out_path.stem)
-    sampled.write_csv(users_path)
-    logger.info(f"User → bucket map saved to {users_path}")
-
     eval_df = _build_eval_rows(candidates, sampled)  # ground truth
-    eval_df.write_csv(out_path)
-    logger.info(
-        f"{out_path}: {eval_df.height:,} rows, "
-        f"{eval_df['user_id'].n_unique():,} users with >=1 target"
-    )
+
+    res = {
+        "sampled": sampled,
+        "ground_truth": eval_df,
+        "train_part": None
+    }
 
     if write_train_part:
         synth_train = (
@@ -266,50 +260,99 @@ def prepare_local_eval(
             .join(eval_df.lazy(), on="user_id", how="semi")
             .filter(pl.col("timestamp") < threshold_ms)
         )
-        synth_train_filename = out_path.with_stem("events_" + out_path.stem).with_suffix(".pq")
-        synth_train.sink_parquet(synth_train_filename)
+        res["train_part"] = synth_train
+
+    return res
+
+
+class PrepareLocalEvalStage(BaseStage):
+    def assert_args_in_cfg(self):
+        assert "in_artifacts" in self.cfg
+        assert "train_path" in self.cfg["in_artifacts"]
+        assert "item_features_path" in self.cfg["in_artifacts"]
+        assert "contact_eids_path" in self.cfg["in_artifacts"]
+
+        assert "out_artifacts" in self.cfg
+        assert "out_path" in self.cfg["out_artifacts"]
+
+    def load_artifacts(self):
+        return {
+            "train_path": self.cfg["in_artifacts"]["train_path"],
+            "item_features_path": self.cfg["in_artifacts"]["item_features_path"],
+            "contact_eids_path": self.cfg["in_artifacts"]["contact_eids_path"],
+            "out_path": self.cfg["out_artifacts"]["out_path"],
+        }
+
+    def parse_kwargs(self):
+        return self.cfg.get("kwargs", dict())
+    
+    def write_artifacts(self, run_result):
+        super().write_artifacts(run_result)
+
+        out_path = Path(self.cfg["out_artifacts"]["out_path"])
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        users_path = out_path.with_stem("users_" + out_path.stem)
+        run_result["sampled"].write_csv(users_path)
+        logger.info(f"User → bucket map saved to {users_path}")
+        
+        run_result["ground_truth"].write_csv(out_path)
+        n_rows = run_result["ground_truth"].height
+        n_unique_users = run_result["ground_truth"]['user_id'].n_unique()
         logger.info(
-            f"{synth_train_filename}: {synth_train.select(pl.len()).collect().item()} rows, "
-            f"{synth_train.select(pl.col('item_id').n_unique()).collect().item()} unique items"
+            f"{out_path}: {n_rows:,} rows, "
+            f"{n_unique_users:,} users with >=1 target"
         )
 
+        if run_result["train_part"] is not None:
+            synth_train_filename = out_path.with_stem("events_" + out_path.stem).with_suffix(".pq")
+            run_result["train_part"].sink_parquet(synth_train_filename)
+            n_rows = run_result["train_part"].select(pl.len()).collect().item()
+            n_unique_items = run_result["train_part"].select(pl.col('item_id').n_unique()).collect().item()
+            logger.info(f"{synth_train_filename}: {n_rows} rows, {n_unique_items} unique items.")
 
 
 if __name__ == "__main__":
-    assert len(sys.argv) == 2, "please provide a pth to yaml config"
-    cfg_path = sys.argv[1]
-    # cfg_path = "/project/workspace/config/data/eval/debug.yml"
+    # assert len(sys.argv) == 2, "please provide a pth to yaml config"
+    # cfg_path = sys.argv[1]
+    cfg_path = "/project/workspace/config/data/eval/debug_stage.yml"
 
     cfg = load_config(cfg_path)["prepare_eval"]
 
-    assert os.path.isfile(cfg["train"]) == os.path.isfile(cfg["out"]) or not os.path.exists(cfg["out"]) # either both are files or directories
+    mlflow.set_tracking_uri("http://localhost:5000")
+    mlflow.set_experiment("prepare_local_eval")
 
-    if os.path.isfile(cfg["train"]) or any((c in cfg["train"]) for c in ["*", "["]):  # process wildcard pattern as one merged file
-        prepare_local_eval(
-            train_path=cfg["train"],
-            item_features_path=cfg["item_features"],
-            contact_eids_path=cfg["contact_eids"],
-            out_path=cfg["out"],
-            synth_threshold=cfg.get("synth_threshold", DEFAULT_SYNTH_THRESHOLD),
-            write_train_part=cfg.get("write_train_part", False),
-            items_blacklist_path=cfg.get("items_blacklist_path", None),
-        )
-    else:
-        logger.info(f"processing multiple files in the directory {cfg['train']}..")
-        part_filenames = list(filter(lambda fn: fn.startswith("part_"), os.listdir(cfg["train"])))
-        newline = "\n"  # py3.11 workaround
-        logger.info(f"filenames to be processed: {newline.join(part_filenames)}")
-        for part_filename in part_filenames:
-            logger.info(f"{'#'*20}{newline}start processing {part_filename}...{newline}")
-            train_path = os.path.join(cfg["train"], part_filename)
-            out_filename = f"eval_{Path(part_filename).stem}.csv"
-            out_path = os.path.join(cfg["out"], out_filename)
-            prepare_local_eval(
-                train_path=train_path,
-                item_features_path=cfg["item_features"],
-                contact_eids_path=cfg["contact_eids"],
-                out_path=out_path,
-                synth_threshold=cfg.get("synth_threshold", DEFAULT_SYNTH_THRESHOLD),
-                write_train_part=cfg.get("write_train_part", False),
-                items_blacklist_path=cfg.get("items_blacklist_path", None),
-            )
+    stage = PrepareLocalEvalStage(cfg, prepare_local_eval)
+    stage.run()
+
+    # assert os.path.isfile(cfg["train"]) == os.path.isfile(cfg["out"]) or not os.path.exists(cfg["out"]) # either both are files or directories
+
+    # if os.path.isfile(cfg["train"]) or any((c in cfg["train"]) for c in ["*", "["]):  # process wildcard pattern as one merged file
+    #     prepare_local_eval(
+    #         train_path=cfg["train"],
+    #         item_features_path=cfg["item_features"],
+    #         contact_eids_path=cfg["contact_eids"],
+    #         out_path=cfg["out"],
+    #         synth_threshold=cfg.get("synth_threshold", DEFAULT_SYNTH_THRESHOLD),
+    #         write_train_part=cfg.get("write_train_part", False),
+    #         items_blacklist_path=cfg.get("items_blacklist_path", None),
+    #     )
+    # else:
+    #     logger.info(f"processing multiple files in the directory {cfg['train']}..")
+    #     part_filenames = list(filter(lambda fn: fn.startswith("part_"), os.listdir(cfg["train"])))
+    #     newline = "\n"  # py3.11 workaround
+    #     logger.info(f"filenames to be processed: {newline.join(part_filenames)}")
+    #     for part_filename in part_filenames:
+    #         logger.info(f"{'#'*20}{newline}start processing {part_filename}...{newline}")
+    #         train_path = os.path.join(cfg["train"], part_filename)
+    #         out_filename = f"eval_{Path(part_filename).stem}.csv"
+    #         out_path = os.path.join(cfg["out"], out_filename)
+    #         prepare_local_eval(
+    #             train_path=train_path,
+    #             item_features_path=cfg["item_features"],
+    #             contact_eids_path=cfg["contact_eids"],
+    #             out_path=out_path,
+    #             synth_threshold=cfg.get("synth_threshold", DEFAULT_SYNTH_THRESHOLD),
+    #             write_train_part=cfg.get("write_train_part", False),
+    #             items_blacklist_path=cfg.get("items_blacklist_path", None),
+    #         )
