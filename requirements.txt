@@ -11,3 +11,4 @@ ipykernel==7.2.0
 PyYAML==6.0.3
 mlflow==3.12.0
 boto3==1.43.7
+s3fs>=2024.5.0
