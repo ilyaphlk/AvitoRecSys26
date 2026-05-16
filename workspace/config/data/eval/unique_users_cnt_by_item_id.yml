@@ -3,9 +3,9 @@ constants:
 
 aggregate:
   in_artifacts:
-    filename_in: /project/data/raw/
+    filename_in: raw/
   out_artifacts:
-    filename_out: /project/data/dev/processed/unique_users_cnt_by_item_id/
+    filename_out: processed/unique_users_cnt_by_item_id/
   kwargs:
     cfg:
       eager_execution: False
@@ -15,15 +15,10 @@ aggregate:
         - group_by: [item_id]
           agg:
             - {alias: unique_users_cnt_by_item_id, col: user_id, func: n_unique}
-      # filters:
-      #   #date_thr: {"<": "2026-04-08T00:00:00"}
-      #   events_cnt_by_item_id: {">": 10}
-      #   events_cnt_by_user_id: {">": 10}
-      # execute_on: "separate"
 
 make_accum:
   out_artifacts:
-    filename_accum: /project/data/dev/processed/unique_users_cnt_by_item_id/combined_blacklist.parquet
+    filename_accum: processed/unique_users_cnt_by_item_id/combined_blacklist.parquet
   kwargs:
     schema:
       item_id: UInt32
@@ -31,10 +26,10 @@ make_accum:
 
 combine:
   in_artifacts:
-    filename_in: /project/data/dev/processed/unique_users_cnt_by_item_id/
-    filename_accum: /project/data/dev/processed/unique_users_cnt_by_item_id/combined_blacklist.parquet
+    filename_in: processed/unique_users_cnt_by_item_id/
+    filename_accum: processed/unique_users_cnt_by_item_id/combined_blacklist.parquet
   out_artifacts:
-    filename_out: /project/data/dev/processed/unique_users_cnt_by_item_id/combined_blacklist.parquet
+    filename_out: processed/unique_users_cnt_by_item_id/combined_blacklist.parquet
   kwargs:
     cfg:
       join_back: False
