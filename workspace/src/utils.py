@@ -4,7 +4,8 @@ import argparse
 import os
 import boto3
 import io
-
+from loguru import logger
+from pathlib import Path
 
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local")  # "local" or "s3"
 S3_BUCKET = os.getenv("S3_BUCKET", None)
@@ -43,7 +44,7 @@ def sink_parquet(df: pl.LazyFrame, path: str, remove_local=True):
 def read_parquet(path: str) -> pl.DataFrame:
     if STORAGE_BACKEND == "s3":
         return pl.read_parquet(f"s3://{S3_BUCKET}/{S3_DATA_DIR}/{path}",
-                               storage_options={"region": AWS_DEFAULT_REGION})
+                               storage_options={"aws_region": AWS_DEFAULT_REGION})
     else:
         return pl.read_parquet(os.path.join(LOCAL_DATA_DIR, path))
 
@@ -51,7 +52,7 @@ def read_parquet(path: str) -> pl.DataFrame:
 def scan_parquet(path: str) -> pl.LazyFrame:
     if STORAGE_BACKEND == "s3":
         return pl.scan_parquet(f"s3://{S3_BUCKET}/{S3_DATA_DIR}/{path}",
-                               storage_options={"region": AWS_DEFAULT_REGION})
+                               storage_options={"aws_region": AWS_DEFAULT_REGION})
     else:
         return pl.scan_parquet(os.path.join(LOCAL_DATA_DIR, path))
 
@@ -68,10 +69,20 @@ def write_csv(df: pl.DataFrame, path: str, remove_local=True):
 def read_csv(path: str) -> pl.DataFrame:
     if STORAGE_BACKEND == "s3":
         return pl.read_csv(f"s3://{S3_BUCKET}/{S3_DATA_DIR}/{path}",
-                               storage_options={"region": AWS_DEFAULT_REGION})
+                               #storage_options={"aws_region": AWS_DEFAULT_REGION}
+                               )
     else:
         return pl.read_csv(os.path.join(LOCAL_DATA_DIR, path))
 
+def listdir(path: str) -> list[str]:
+    if STORAGE_BACKEND == "s3":
+        logger.debug(f"listing s3 files in {S3_DATA_DIR}/{path}")
+        contents = get_s3_client().list_objects_v2(Bucket=S3_BUCKET, Prefix=f"{S3_DATA_DIR}/{path}").get("Contents", [])
+        logger.debug(f"returned contents: {contents}")
+        part_filenames = [Path(obj["Key"]).name for obj in contents]
+        logger.debug(f"part_filenames: {part_filenames}")
+        return part_filenames
+    return os.listdir(os.path.join(LOCAL_DATA_DIR, path))
 
 
 def calc_metric(df_true, df_pred):
