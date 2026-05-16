@@ -133,8 +133,11 @@ def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
     return [make_df(elem, cfg) for elem in frames]
 
 
+def is_dirlike(path):
+    return os.path.split(path)[-1] == ""
+
 def parse_path_in(path_in):
-        if os.path.isdir(path_in):
+        if is_dirlike(path_in):
             return path_in, lambda s: s.startswith("part_")
 
         return str(Path(path_in).parent), lambda s: s == str(Path(path_in).name)
@@ -152,8 +155,8 @@ class DataTransformStage(BaseStage):
         assert "filename_out" in self.cfg["out_artifacts"]
 
         assert (  #either both are files or both are dirs; out dir must end in a "/"
-            not(os.path.isdir(self.cfg["in_artifacts"]["filename_in"]) ^ (os.path.split(self.cfg["out_artifacts"]["filename_out"])[-1] == ""))
-            or (os.path.isdir(self.cfg["in_artifacts"]["filename_in"]) and self.cfg["in_artifacts"].get("filename_accum", None) is not None)
+            not(is_dirlike(self.cfg["in_artifacts"]["filename_in"]) ^ is_dirlike(self.cfg["out_artifacts"]["filename_out"]))
+            or (is_dirlike(self.cfg["in_artifacts"]["filename_in"]) and self.cfg["in_artifacts"].get("filename_accum", None) is not None)
         )    
 
     def load_artifacts(self):
@@ -162,16 +165,16 @@ class DataTransformStage(BaseStage):
         if "filename_accum" in self.cfg["in_artifacts"]:
             filename_accum = self.cfg["in_artifacts"]["filename_accum"]
             df_accum = utils.scan_parquet(filename_accum)
-            #mlflow.log_artifact(filename_accum)
+            #mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, filename_accum))
         res = {"df_accum": df_accum}
 
         dir_in, filename_filter = parse_path_in(path_in)
         parts = []
-        for part_filename in sorted(list(filter(filename_filter, os.listdir(dir_in)))):
+        for part_filename in sorted(list(filter(filename_filter, utils.listdir(dir_in)))):
             logger.debug(f"scanning {part_filename} from {dir_in}...")
             read_path = os.path.join(dir_in, part_filename)
             parts.append(utils.scan_parquet(read_path))
-            #mlflow.log_artifact(read_path)
+            #mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, read_path))
         return {**res, "frames": parts}
 
     
@@ -182,7 +185,7 @@ class DataTransformStage(BaseStage):
         need_keys = self.cfg["kwargs"]["cfg"].get("append_keys_to_filename", True)
 
         dir_in, filename_filter = parse_path_in(path_in)
-        part_filenames = sorted(list(filter(filename_filter, os.listdir(dir_in))))
+        part_filenames = sorted(list(filter(filename_filter, utils.listdir(dir_in))))
         for elem, part_filename in zip(res, part_filenames):
             logger.info(f"{'#'*20}\nProcessing {part_filename} from {dir_in}...\n")
             if isinstance(elem, dict):
@@ -190,13 +193,13 @@ class DataTransformStage(BaseStage):
                 for join_keys, df in elem.items():
                     p = Path(part_filename)
                     part_filename_keys = "_".join([str(p.stem), *sorted(join_keys)]) + p.suffix if need_keys else part_filename
-                    write_path = os.path.join(path_out, part_filename_keys) if os.path.isdir(path_out) else path_out
+                    write_path = os.path.join(path_out, part_filename_keys) if is_dirlike(path_out) else path_out
                     utils.sink_parquet(df, write_path, remove_local=False) if isinstance(df, pl.LazyFrame) else utils.write_parquet(df, write_path, remove_local=False)
-                    mlflow.log_artifact(write_path)
+                    mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, write_path))
             else:
-                write_path = os.path.join(path_out, part_filename) if os.path.isdir(path_out) else path_out
+                write_path = os.path.join(path_out, part_filename) if is_dirlike(path_out) else path_out
                 utils.sink_parquet(elem, write_path, remove_local=False) if isinstance(elem, pl.LazyFrame) else utils.write_parquet(elem, write_path, remove_local=False)
-                mlflow.log_artifact(write_path)
+                mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, write_path))
 
 
     def parse_kwargs(self):
@@ -225,7 +228,7 @@ class SequentialStage(BaseStage):
 
         dir_in, filename_filter = parse_path_in(path_in)
         dir_out = path_out if os.path.split(path_out)[-1] == "" else str(Path(path_out).parent)
-        part_filenames = sorted(list(filter(filename_filter, os.listdir(dir_in))))
+        part_filenames = sorted(list(filter(filename_filter, utils.listdir(dir_in))))
         logger.debug(f"making children stages for running on directory: {dir_in}, files: {part_filenames}")
         children_stages = list()
         for part_filename in part_filenames:
@@ -277,7 +280,7 @@ class MakeAccumStage(BaseStage):
         super().write_artifacts(run_result)
         path_out = self.cfg["out_artifacts"]["filename_accum"]
         utils.sink_parquet(run_result, path_out, remove_local=False)
-        mlflow.log_artifact(path_out)
+        mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, path_out))
 
 def main():
     # assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
