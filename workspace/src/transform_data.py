@@ -159,14 +159,18 @@ class DataTransformStage(BaseStage):
         path_in = self.cfg["in_artifacts"]["filename_in"]
         df_accum = None
         if "filename_accum" in self.cfg["in_artifacts"]:
-            df_accum = pl.scan_parquet(self.cfg["in_artifacts"]["filename_accum"])
+            filename_accum = self.cfg["in_artifacts"]["filename_accum"]
+            df_accum = pl.scan_parquet(filename_accum)
+            #mlflow.log_artifact(filename_accum)
         res = {"df_accum": df_accum}
 
         dir_in, filename_filter = parse_path_in(path_in)
         parts = []
         for part_filename in sorted(list(filter(filename_filter, os.listdir(dir_in)))):
             logger.debug(f"scanning {part_filename} from {dir_in}...")
-            parts.append(pl.scan_parquet(os.path.join(dir_in, part_filename)))
+            read_path = os.path.join(dir_in, part_filename)
+            parts.append(pl.scan_parquet(read_path))
+            #mlflow.log_artifact(read_path)
         return {**res, "frames": parts}
 
     
@@ -187,9 +191,11 @@ class DataTransformStage(BaseStage):
                     part_filename_keys = "_".join([str(p.stem), *sorted(join_keys)]) + p.suffix if need_keys else part_filename
                     write_path = os.path.join(path_out, part_filename_keys) if os.path.isdir(path_out) else path_out
                     df.sink_parquet(write_path) if isinstance(df, pl.LazyFrame) else df.write_parquet(write_path)
+                    mlflow.log_artifact(write_path)
             else:
                 write_path = os.path.join(path_out, part_filename) if os.path.isdir(path_out) else path_out
                 elem.sink_parquet(write_path) if isinstance(elem, pl.LazyFrame) else elem.write_parquet(write_path)
+                mlflow.log_artifact(write_path)
 
 
     def parse_kwargs(self):
@@ -270,6 +276,7 @@ class MakeAccumStage(BaseStage):
         super().write_artifacts(run_result)
         path_out = self.cfg["out_artifacts"]["filename_accum"]
         run_result.sink_parquet(path_out)
+        mlflow.log_artifact(path_out)
 
 def main():
     # assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"

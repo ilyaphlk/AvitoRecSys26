@@ -109,10 +109,13 @@ def _build_candidates(
             .join(seen, on=["user_id", "item_id"], how="anti")  # and only unseen by users from synth_train
             .collect()
         )
+    n_rows = candidates.height
+    n_eligible_users = candidates['user_id'].n_unique()
     logger.info(
-        f"Candidate events: {candidates.height:,} rows, "
-        f"{candidates['user_id'].n_unique():,} eligible users"
+        f"Candidate events: {n_rows:,} rows, "
+        f"{n_eligible_users:,} eligible users"
     )
+    mlflow.log_metrics({"n_rows_eligible": n_rows, "n_users_eligible": n_eligible_users})
     return candidates
 
 
@@ -142,6 +145,7 @@ def _build_user_sample(
     )
 
     parts: list[pl.DataFrame] = []
+    bucket_stats = dict()
     for bucket_name, vertical_ids in BUCKET_SPECS:
         logger.info(f"start processing bucket {bucket_name}")
         bucket_n = (
@@ -165,6 +169,11 @@ def _build_user_sample(
             f"  bucket {bucket_name} (verticals={sorted(vertical_ids)}): "
             f"{n} / {focused.height} eligible focused users (seed={seed})"
         )
+        bucket_stats[bucket_name] = {
+            "n_selected": n,
+            "n_eligible": focused.height,
+            "seed": seed
+        }
         parts.append(sample.with_columns(pl.lit(bucket_name).alias("bucket")))
 
     bucketed = pl.concat([p.select("user_id") for p in parts]).unique()
@@ -183,14 +192,22 @@ def _build_user_sample(
         seed = 100 + i
         sample = holdout_pool.sample(n=n, seed=seed)
         logger.info(f"  bucket h{i}: {n} / {holdout_pool.height} (seed={seed})")
+        bucket_stats[f"h{i}"] = {
+            "n_selected": n,
+            "n_eligible": focused.height,
+            "seed": seed
+        }
         parts.append(sample.with_columns(pl.lit(f"h{i}").alias("bucket")))
         holdout_pool = holdout_pool.join(sample, on="user_id", how="anti").sort(
             "user_id"
         )
 
+    mlflow.log_dict(bucket_stats, "stats/bucket_stats.json")
+
     combined = pl.concat(parts)
     n_unique = combined["user_id"].n_unique()
     logger.info(f"Total sampled: {combined.height:,} rows, {n_unique:,} unique users")
+    mlflow.log_metrics({"total_sampled": combined.height, "total_unique_users": n_unique})
     if n_unique != combined.height:
         logger.warning(f"{combined.height - n_unique} duplicate user→bucket assignments")
     return combined  # contains only `user_id` and `bucket` columns
@@ -236,7 +253,6 @@ def prepare_local_eval(
     )
 
     contact_eids = pl.read_csv(contact_eids_path).get_column("mapped_eid").to_list()  # materialize only contact eids
-    logger.info(f"Contact eids: {contact_eids}")
 
     candidates = _build_candidates(  # returns events from train eligible for eval (by date and popularity thr, unseen in synth_train)
         train_path, contact_eids, threshold_ms, eval_start_ms, items_blacklist_path
@@ -281,9 +297,9 @@ class PrepareLocalEvalStage(BaseStage):
             "item_features_path": self.cfg["in_artifacts"]["item_features_path"],
             "contact_eids_path": self.cfg["in_artifacts"]["contact_eids_path"],
         }
-        mlflow.log_artifact(artifacts["train_path"])
-        mlflow.log_artifact(artifacts["item_features_path"])
-        mlflow.log_artifact(artifacts["contact_eids_path"])
+        # mlflow.log_artifact(artifacts["train_path"])
+        # mlflow.log_artifact(artifacts["item_features_path"])
+        # mlflow.log_artifact(artifacts["contact_eids_path"])
 
         return artifacts
 
@@ -317,6 +333,7 @@ class PrepareLocalEvalStage(BaseStage):
             n_unique_items = run_result["train_part"].select(pl.col('item_id').n_unique()).collect().item()
             logger.info(f"{synth_train_filename}: {n_rows} rows, {n_unique_items} unique items.")
             mlflow.log_artifact(synth_train_filename)
+            mlflow.log_metrics({"n_rows_train_part": n_rows, "n_unique_items_train_part": n_unique_items})
 
 
 if __name__ == "__main__":
