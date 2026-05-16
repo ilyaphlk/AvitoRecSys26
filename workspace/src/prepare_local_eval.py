@@ -276,11 +276,16 @@ class PrepareLocalEvalStage(BaseStage):
         assert "filename_out" in self.cfg["out_artifacts"]
 
     def load_artifacts(self):
-        return {
+        artifacts = {
             "train_path": self.cfg["in_artifacts"]["filename_in"],
             "item_features_path": self.cfg["in_artifacts"]["item_features_path"],
             "contact_eids_path": self.cfg["in_artifacts"]["contact_eids_path"],
         }
+        mlflow.log_artifact(artifacts["train_path"])
+        mlflow.log_artifact(artifacts["item_features_path"])
+        mlflow.log_artifact(artifacts["contact_eids_path"])
+
+        return artifacts
 
     def parse_kwargs(self):
         return self.cfg.get("kwargs", dict())
@@ -294,6 +299,7 @@ class PrepareLocalEvalStage(BaseStage):
         users_path = out_path.with_stem("users_" + out_path.stem)
         run_result["sampled"].write_csv(users_path)
         logger.info(f"User → bucket map saved to {users_path}")
+        mlflow.log_artifact(users_path)
         
         run_result["ground_truth"].write_csv(out_path)
         n_rows = run_result["ground_truth"].height
@@ -302,6 +308,7 @@ class PrepareLocalEvalStage(BaseStage):
             f"{out_path}: {n_rows:,} rows, "
             f"{n_unique_users:,} users with >=1 target"
         )
+        mlflow.log_artifact(out_path)
 
         if run_result["train_part"] is not None:
             synth_train_filename = out_path.with_stem("events_" + out_path.stem).with_suffix(".pq")
@@ -309,6 +316,7 @@ class PrepareLocalEvalStage(BaseStage):
             n_rows = run_result["train_part"].select(pl.len()).collect().item()
             n_unique_items = run_result["train_part"].select(pl.col('item_id').n_unique()).collect().item()
             logger.info(f"{synth_train_filename}: {n_rows} rows, {n_unique_items} unique items.")
+            mlflow.log_artifact(synth_train_filename)
 
 
 if __name__ == "__main__":
