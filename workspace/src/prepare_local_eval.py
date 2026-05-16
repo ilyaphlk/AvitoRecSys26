@@ -53,6 +53,8 @@ from stage import BaseStage
 import mlflow
 from transform_data import SequentialStage, parse_path_in
 
+import utils
+
 # ── Constants frozen by the official v4 eval spec ─────────────────────────
 DEFAULT_SYNTH_THRESHOLD = "2026-04-08T00:00:00"  # 1 week before real threshold
 GAP_HOURS = 12
@@ -81,7 +83,7 @@ def _build_candidates(
     items_blacklist_path: str | None = None
 ) -> pl.DataFrame:
     logger.debug("start building candidates...")
-    train = pl.scan_parquet(train_path)
+    train = utils.scan_parquet(train_path)
     synth_train = train.filter(pl.col("timestamp") < threshold_ms)
 
     seen = synth_train.select(["user_id", "item_id"]).unique()  # for each user select item_ids already seen
@@ -91,7 +93,7 @@ def _build_candidates(
         candidates = (
             train.filter(pl.col("timestamp") >= eval_start_ms)  # select events from eval time range,
             .filter(pl.col("eid").is_in(contact_eids))          # only contact (target) ones
-            .join(pl.scan_parquet(items_blacklist_path), on="item_id", how="anti")    # only items above popularity thr
+            .join(utils.scan_parquet(items_blacklist_path), on="item_id", how="anti")    # only items above popularity thr
             .join(seen, on=["user_id", "item_id"], how="anti")  # and only unseen by users from synth_train
             .collect()
         )
@@ -125,10 +127,10 @@ def _build_user_sample(
     threshold_ms: int,
     eligible_users: pl.DataFrame,
 ) -> pl.DataFrame:
-    synth_train = pl.scan_parquet(train_path).filter(
+    synth_train = utils.scan_parquet(train_path).filter(
         pl.col("timestamp") < threshold_ms
     )
-    items_v = pl.scan_parquet(item_features_path).select(["item_id", "vertical_id"])  # for each item get its slice (vertical)
+    items_v = utils.scan_parquet(item_features_path).select(["item_id", "vertical_id"])  # for each item get its slice (vertical)
 
     logger.info("start making vertical stats...")
     user_vertical = (
@@ -272,7 +274,7 @@ def prepare_local_eval(
 
     if write_train_part:
         synth_train = (
-            pl.scan_parquet(train_path)
+            utils.scan_parquet(train_path)
             .join(eval_df.lazy(), on="user_id", how="semi")
             .filter(pl.col("timestamp") < threshold_ms)
         )
@@ -313,11 +315,13 @@ class PrepareLocalEvalStage(BaseStage):
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
         users_path = out_path.with_stem("users_" + out_path.stem)
-        run_result["sampled"].write_csv(users_path)
+        #run_result["sampled"].write_csv(users_path)
+        utils.write_csv(run_result["sampled"], users_path, remove_local=False)
         logger.info(f"User → bucket map saved to {users_path}")
         mlflow.log_artifact(users_path)
         
-        run_result["ground_truth"].write_csv(out_path)
+        #run_result["ground_truth"].write_csv(out_path)
+        utils.write_csv(run_result["ground_truth"], out_path, remove_local=False)
         n_rows = run_result["ground_truth"].height
         n_unique_users = run_result["ground_truth"]['user_id'].n_unique()
         logger.info(
@@ -328,7 +332,8 @@ class PrepareLocalEvalStage(BaseStage):
 
         if run_result["train_part"] is not None:
             synth_train_filename = out_path.with_stem("events_" + out_path.stem).with_suffix(".pq")
-            run_result["train_part"].sink_parquet(synth_train_filename)
+            #run_result["train_part"].sink_parquet(synth_train_filename)
+            utils.sink_parquet(run_result["train_part"], synth_train_filename, remove_local=False)
             n_rows = run_result["train_part"].select(pl.len()).collect().item()
             n_unique_items = run_result["train_part"].select(pl.col('item_id').n_unique()).collect().item()
             logger.info(f"{synth_train_filename}: {n_rows} rows, {n_unique_items} unique items.")

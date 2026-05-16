@@ -9,6 +9,7 @@ from utils import load_config
 from stage import BaseStage, StageStatus
 import mlflow
 import copy
+import utils
 
 
 PRED_OPS = {
@@ -160,7 +161,7 @@ class DataTransformStage(BaseStage):
         df_accum = None
         if "filename_accum" in self.cfg["in_artifacts"]:
             filename_accum = self.cfg["in_artifacts"]["filename_accum"]
-            df_accum = pl.scan_parquet(filename_accum)
+            df_accum = utils.scan_parquet(filename_accum)
             #mlflow.log_artifact(filename_accum)
         res = {"df_accum": df_accum}
 
@@ -169,7 +170,7 @@ class DataTransformStage(BaseStage):
         for part_filename in sorted(list(filter(filename_filter, os.listdir(dir_in)))):
             logger.debug(f"scanning {part_filename} from {dir_in}...")
             read_path = os.path.join(dir_in, part_filename)
-            parts.append(pl.scan_parquet(read_path))
+            parts.append(utils.scan_parquet(read_path))
             #mlflow.log_artifact(read_path)
         return {**res, "frames": parts}
 
@@ -190,11 +191,11 @@ class DataTransformStage(BaseStage):
                     p = Path(part_filename)
                     part_filename_keys = "_".join([str(p.stem), *sorted(join_keys)]) + p.suffix if need_keys else part_filename
                     write_path = os.path.join(path_out, part_filename_keys) if os.path.isdir(path_out) else path_out
-                    df.sink_parquet(write_path) if isinstance(df, pl.LazyFrame) else df.write_parquet(write_path)
+                    utils.sink_parquet(df, write_path, remove_local=False) if isinstance(df, pl.LazyFrame) else utils.write_parquet(df, write_path, remove_local=False)
                     mlflow.log_artifact(write_path)
             else:
                 write_path = os.path.join(path_out, part_filename) if os.path.isdir(path_out) else path_out
-                elem.sink_parquet(write_path) if isinstance(elem, pl.LazyFrame) else elem.write_parquet(write_path)
+                utils.sink_parquet(elem, write_path, remove_local=False) if isinstance(elem, pl.LazyFrame) else utils.write_parquet(elem, write_path, remove_local=False)
                 mlflow.log_artifact(write_path)
 
 
@@ -275,7 +276,7 @@ class MakeAccumStage(BaseStage):
     def write_artifacts(self, run_result):
         super().write_artifacts(run_result)
         path_out = self.cfg["out_artifacts"]["filename_accum"]
-        run_result.sink_parquet(path_out)
+        utils.sink_parquet(run_result, path_out, remove_local=False)
         mlflow.log_artifact(path_out)
 
 def main():
