@@ -254,7 +254,7 @@ def prepare_local_eval(
         f"synth_eval: timestamp >= {eval_start_ms} ({eval_start_date}, gap {GAP_HOURS}h)"
     )
 
-    contact_eids = pl.read_csv(contact_eids_path).get_column("mapped_eid").to_list()  # materialize only contact eids
+    contact_eids = utils.read_csv(contact_eids_path).get_column("mapped_eid").to_list()  # materialize only contact eids
 
     candidates = _build_candidates(  # returns events from train eligible for eval (by date and popularity thr, unseen in synth_train)
         train_path, contact_eids, threshold_ms, eval_start_ms, items_blacklist_path
@@ -312,13 +312,12 @@ class PrepareLocalEvalStage(BaseStage):
         super().write_artifacts(run_result)
 
         out_path = Path(self.cfg["out_artifacts"]["filename_out"])
-        out_path.parent.mkdir(parents=True, exist_ok=True)
 
         users_path = out_path.with_stem("users_" + out_path.stem)
         #run_result["sampled"].write_csv(users_path)
         utils.write_csv(run_result["sampled"], users_path, remove_local=False)
         logger.info(f"User → bucket map saved to {users_path}")
-        mlflow.log_artifact(users_path)
+        mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, users_path))
         
         #run_result["ground_truth"].write_csv(out_path)
         utils.write_csv(run_result["ground_truth"], out_path, remove_local=False)
@@ -328,7 +327,7 @@ class PrepareLocalEvalStage(BaseStage):
             f"{out_path}: {n_rows:,} rows, "
             f"{n_unique_users:,} users with >=1 target"
         )
-        mlflow.log_artifact(out_path)
+        mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, out_path))
 
         if run_result["train_part"] is not None:
             synth_train_filename = out_path.with_stem("events_" + out_path.stem).with_suffix(".pq")
@@ -337,7 +336,7 @@ class PrepareLocalEvalStage(BaseStage):
             n_rows = run_result["train_part"].select(pl.len()).collect().item()
             n_unique_items = run_result["train_part"].select(pl.col('item_id').n_unique()).collect().item()
             logger.info(f"{synth_train_filename}: {n_rows} rows, {n_unique_items} unique items.")
-            mlflow.log_artifact(synth_train_filename)
+            mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, synth_train_filename))
             mlflow.log_metrics({"n_rows_train_part": n_rows, "n_unique_items_train_part": n_unique_items})
 
 
