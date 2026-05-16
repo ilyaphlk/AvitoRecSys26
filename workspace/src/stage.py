@@ -49,7 +49,6 @@ class BaseStage:
             if os.path.split(fp)[-1] == "":  # check if dir-like
                 fp = os.path.join(fp, "placeholder")
             p = Path(fp)
-            pp = p.parent
             p.parent.mkdir(parents=True, exist_ok=True)
     
     def run(self):
