@@ -126,6 +126,7 @@ def _build_user_sample(
     item_features_path: str,
     threshold_ms: int,
     eligible_users: pl.DataFrame,
+    vertical_quotas: dict[str, int] | None = None,
 ) -> pl.DataFrame:
     synth_train = utils.scan_parquet(train_path).filter(
         pl.col("timestamp") < threshold_ms
@@ -164,7 +165,9 @@ def _build_user_sample(
             .unique()
             .sort("user_id")
         )
-        n = min(QUOTA_PER_VERTICAL, focused.height)    # sample at max QUOTA_PER_VERTICAL users from focused
+
+        quota = vertical_quotas[bucket_name] if vertical_quotas is not None else QUOTA_PER_VERTICAL
+        n = min(quota, focused.height)    # sample at max QUOTA_PER_VERTICAL users from focused
         seed = 42 + sum(int(v) for v in vertical_ids)
         sample = focused.sample(n=n, seed=seed)
         logger.info(
@@ -190,16 +193,18 @@ def _build_user_sample(
     for i in range(N_HOLDOUT_BUCKETS):  # iteratively select n random non-overlapping buckets from all the other users
         if holdout_pool.height == 0:
             break
-        n = min(HOLDOUT_QUOTA, holdout_pool.height)
+        bucket_name = f"h{i}"
+        quota = vertical_quotas[bucket_name] if vertical_quotas is not None else HOLDOUT_QUOTA
+        n = min(quota, holdout_pool.height)
         seed = 100 + i
         sample = holdout_pool.sample(n=n, seed=seed)
-        logger.info(f"  bucket h{i}: {n} / {holdout_pool.height} (seed={seed})")
-        bucket_stats[f"h{i}"] = {
+        logger.info(f"  bucket {bucket_name}: {n} / {holdout_pool.height} (seed={seed})")
+        bucket_stats[bucket_name] = {
             "n_selected": n,
-            "n_eligible": focused.height,
+            "n_eligible": holdout_pool.height,
             "seed": seed
         }
-        parts.append(sample.with_columns(pl.lit(f"h{i}").alias("bucket")))
+        parts.append(sample.with_columns(pl.lit(bucket_name).alias("bucket")))
         holdout_pool = holdout_pool.join(sample, on="user_id", how="anti").sort(
             "user_id"
         )
@@ -235,7 +240,8 @@ def prepare_local_eval(
     contact_eids_path: str,
     synth_threshold: str = DEFAULT_SYNTH_THRESHOLD,
     write_train_part: bool = False,
-    items_blacklist_path: str | None = None
+    items_blacklist_path: str | None = None,
+    vertical_quotas: dict[str, int] | None = None,
 ):
     """
         train_path - path to a single train file to split
@@ -262,23 +268,32 @@ def prepare_local_eval(
     eligible_users = candidates.select("user_id").unique().sort("user_id")  # unique users from that
 
     sampled = _build_user_sample(  # user_id, bucket - df sampled by bucket
-        train_path, item_features_path, threshold_ms, eligible_users
+        train_path, item_features_path, threshold_ms, eligible_users, vertical_quotas
     )
     eval_df = _build_eval_rows(candidates, sampled)  # ground truth
 
     res = {
         "sampled": sampled,
         "ground_truth": eval_df,
-        "train_part": None
+        "eval_user_events": None,
+        "other_user_events": None,
     }
 
     if write_train_part:
-        synth_train = (
+        # write events for selected sample / all other users separately
+        eval_user_events = (
             utils.scan_parquet(train_path)
             .join(eval_df.lazy(), on="user_id", how="semi")
             .filter(pl.col("timestamp") < threshold_ms)
         )
-        res["train_part"] = synth_train
+        res["eval_user_events"] = eval_user_events
+
+        other_user_events = (
+            utils.scan_parquet(train_path)
+            .join(eval_df.lazy(), on="user_id", how="anti")
+            .filter(pl.col("timestamp") < threshold_ms)
+        )
+        res["other_user_events"] = other_user_events
 
     return res
 
@@ -311,15 +326,7 @@ class PrepareLocalEvalStage(BaseStage):
     def write_artifacts(self, run_result):
         super().write_artifacts(run_result)
 
-        out_path = Path(self.cfg["out_artifacts"]["filename_out"])
-
-        users_path = out_path.with_stem("users_" + out_path.stem)
-        #run_result["sampled"].write_csv(users_path)
-        utils.write_csv(run_result["sampled"], users_path, remove_local=False)
-        logger.info(f"User → bucket map saved to {users_path}")
-        mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, users_path))
-        
-        #run_result["ground_truth"].write_csv(out_path)
+        out_path = Path(self.cfg["out_artifacts"]["filename_out"]).with_suffix(".csv")
         utils.write_csv(run_result["ground_truth"], out_path, remove_local=False)
         n_rows = run_result["ground_truth"].height
         n_unique_users = run_result["ground_truth"]['user_id'].n_unique()
@@ -329,15 +336,31 @@ class PrepareLocalEvalStage(BaseStage):
         )
         mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, out_path))
 
-        if run_result["train_part"] is not None:
-            synth_train_filename = out_path.with_stem("events_" + out_path.stem).with_suffix(".pq")
-            #run_result["train_part"].sink_parquet(synth_train_filename)
-            utils.sink_parquet(run_result["train_part"], synth_train_filename, remove_local=False)
-            n_rows = run_result["train_part"].select(pl.len()).collect().item()
-            n_unique_items = run_result["train_part"].select(pl.col('item_id').n_unique()).collect().item()
-            logger.info(f"{synth_train_filename}: {n_rows} rows, {n_unique_items} unique items.")
-            mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, synth_train_filename))
-            mlflow.log_metrics({"n_rows_train_part": n_rows, "n_unique_items_train_part": n_unique_items})
+        users_path = Path(os.path.join(out_path.parent, "users", out_path.name))
+        #users_path.parent.mkdir(parents=True, exist_ok=True)
+        utils.write_csv(run_result["sampled"], users_path, remove_local=False)
+        logger.info(f"User → bucket map saved to {users_path}")
+        mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, users_path))
+
+        if self.kwargs.get("write_train_part", False):
+            def write_user_events(key):
+                """
+                    key in ["eval_user_events", "other_user_events"]
+                """
+                user_events_path = Path(
+                    os.path.join(out_path.parent, key, out_path.name)
+                ).with_suffix(".pq")
+                #user_events_path.parent.mkdir(parents=True, exist_ok=True)
+
+                utils.sink_parquet(run_result[key], user_events_path, remove_local=False)
+                n_rows_user_events = run_result[key].select(pl.len()).collect().item()
+                n_unique_items_user_events = run_result[key].select(pl.col('item_id').n_unique()).collect().item()
+                logger.info(f"{user_events_path}: {n_rows_user_events} rows, {n_unique_items_user_events} unique items.")
+                mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, user_events_path))
+                mlflow.log_metrics({f"n_rows_{key}": n_rows_user_events, f"n_unique_items_{key}": n_unique_items_user_events})
+
+            write_user_events("eval_user_events")
+            write_user_events("other_user_events")
 
 
 if __name__ == "__main__":
