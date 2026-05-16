@@ -228,7 +228,7 @@ class SequentialStage(BaseStage):
             cfg_copy = copy.deepcopy(self.cfg)
             cfg_copy["in_artifacts"]["filename_in"] = full_filename_in
             cfg_copy["out_artifacts"]["filename_out"] = full_filename_out
-            children_stages.append(self.stage_class(cfg_copy, self.func))
+            children_stages.append(self.stage_class(cfg_copy, self.func, run_name_suffix="_"+Path(part_filename).stem))
         
         return children_stages
     

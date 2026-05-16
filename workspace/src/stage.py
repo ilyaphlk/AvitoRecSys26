@@ -11,7 +11,7 @@ class StageStatus(Enum):
     FAILED = 2
 
 class BaseStage:
-    def __init__(self, cfg, func, run_name=None):
+    def __init__(self, cfg, func, run_name=None, run_name_suffix=None):
         """
             `cfg` - config object
             `func` - callable function, returns a result which is then written as artifacts to disk
@@ -19,6 +19,7 @@ class BaseStage:
         self.cfg = cfg
         self.func = func
         self.run_name = run_name if run_name is not None else self.__class__.__name__
+        self.run_name = self.run_name + run_name_suffix if run_name_suffix is not None else self.run_name
         self.assert_args_in_cfg()
         self.kwargs = self.parse_kwargs()
         self.status = StageStatus.NOT_STARTED
