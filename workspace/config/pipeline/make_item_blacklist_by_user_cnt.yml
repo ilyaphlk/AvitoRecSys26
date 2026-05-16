@@ -1,0 +1,17 @@
+pipeline:
+  experiment_name: prepare_local_eval
+  run_name: make_item_blacklist
+  stages:
+    - stage_name: aggregate
+      config_path: /project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml
+      stage_class: DataTransformStage
+      stage_func: process_data
+    - stage_name: make_accum
+      config_path: /project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml
+      stage_class: MakeAccumStage
+      stage_func: make_empty_df
+    - stage_name: combine
+      config_path: /project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml
+      stage_class: SequentialStage
+      child_stage_class: DataTransformStage
+      stage_func: process_data
