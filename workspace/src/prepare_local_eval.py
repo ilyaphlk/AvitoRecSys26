@@ -337,7 +337,6 @@ class PrepareLocalEvalStage(BaseStage):
         mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, out_path))
 
         users_path = Path(os.path.join(out_path.parent, "users", out_path.name))
-        #users_path.parent.mkdir(parents=True, exist_ok=True)
         utils.write_csv(run_result["sampled"], users_path, remove_local=False)
         logger.info(f"User → bucket map saved to {users_path}")
         mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, users_path))
@@ -347,10 +346,10 @@ class PrepareLocalEvalStage(BaseStage):
                 """
                     key in ["eval_user_events", "other_user_events"]
                 """
+                subdirs = {"eval_user_events": key, "other_user_events": os.path.join("..", "train", "other_user_events")}
                 user_events_path = Path(
-                    os.path.join(out_path.parent, key, out_path.name)
+                    os.path.join(out_path.parent, subdirs[key], out_path.name)
                 ).with_suffix(".pq")
-                #user_events_path.parent.mkdir(parents=True, exist_ok=True)
 
                 utils.sink_parquet(run_result[key], user_events_path, remove_local=False)
                 n_rows_user_events = run_result[key].select(pl.len()).collect().item()
