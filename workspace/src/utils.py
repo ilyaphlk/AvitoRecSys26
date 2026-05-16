@@ -1,6 +1,77 @@
 import polars as pl
 import yaml
 import argparse
+import os
+import boto3
+import io
+
+
+STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local")  # "local" or "s3"
+S3_BUCKET = os.getenv("S3_BUCKET", None)
+AWS_DEFAULT_REGION=os.getenv("AWS_DEFAULT_REGION", None)
+LOCAL_DATA_DIR = os.getenv("LOCAL_DATA_DIR", "/project/data")
+S3_DATA_DIR = os.getenv("S3_DATA_DIR", "data")
+
+_s3_client = None
+
+def get_s3_client():
+    global _s3_client
+    if _s3_client is None:
+        _s3_client = boto3.client("s3", region_name=AWS_DEFAULT_REGION)
+    return _s3_client
+
+def write_parquet(df: pl.DataFrame, path: str, remove_local=True):
+    """path is relative, e.g. 'features/train.parquet'"""
+    full_path = os.path.join(LOCAL_DATA_DIR, path)
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    df.write_parquet(full_path)
+    if STORAGE_BACKEND == "s3":
+        get_s3_client().upload_file(full_path, S3_BUCKET, f"{S3_DATA_DIR}/{path}")
+        if remove_local:
+            os.remove(full_path)
+
+def sink_parquet(df: pl.LazyFrame, path: str, remove_local=True):
+    """path is relative, e.g. 'features/train.parquet'"""
+    full_path = os.path.join(LOCAL_DATA_DIR, path)
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    df.sink_parquet(full_path)
+    if STORAGE_BACKEND == "s3":
+        get_s3_client().upload_file(full_path, S3_BUCKET, f"{S3_DATA_DIR}/{path}")
+        if remove_local:
+            os.remove(full_path)
+
+def read_parquet(path: str) -> pl.DataFrame:
+    if STORAGE_BACKEND == "s3":
+        return pl.read_parquet(f"s3://{S3_BUCKET}/{S3_DATA_DIR}/{path}",
+                               storage_options={"region": AWS_DEFAULT_REGION})
+    else:
+        return pl.read_parquet(os.path.join(LOCAL_DATA_DIR, path))
+
+
+def scan_parquet(path: str) -> pl.LazyFrame:
+    if STORAGE_BACKEND == "s3":
+        return pl.scan_parquet(f"s3://{S3_BUCKET}/{S3_DATA_DIR}/{path}",
+                               storage_options={"region": AWS_DEFAULT_REGION})
+    else:
+        return pl.scan_parquet(os.path.join(LOCAL_DATA_DIR, path))
+
+def write_csv(df: pl.DataFrame, path: str, remove_local=True):
+    """path is relative, e.g. 'features/train.csv'"""
+    full_path = os.path.join(LOCAL_DATA_DIR, path)
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    df.write_csv(full_path)
+    if STORAGE_BACKEND == "s3":
+        get_s3_client().upload_file(full_path, S3_BUCKET, f"{S3_DATA_DIR}/{path}")
+        if remove_local:
+            os.remove(full_path)
+
+def read_csv(path: str) -> pl.DataFrame:
+    if STORAGE_BACKEND == "s3":
+        return pl.read_csv(f"s3://{S3_BUCKET}/{S3_DATA_DIR}/{path}",
+                               storage_options={"region": AWS_DEFAULT_REGION})
+    else:
+        return pl.read_csv(os.path.join(LOCAL_DATA_DIR, path))
+
 
 
 def calc_metric(df_true, df_pred):
