@@ -214,16 +214,20 @@ class SequentialStage(BaseStage):
 
     def make_children_stages(self):
         path_in = self.cfg["in_artifacts"]["filename_in"]
+        path_out = self.cfg["out_artifacts"]["filename_out"]
 
         dir_in, filename_filter = parse_path_in(path_in)
+        dir_out = path_out if os.path.split(path_out)[-1] == "" else str(Path(path_out).parent)
         part_filenames = sorted(list(filter(filename_filter, os.listdir(dir_in))))
         logger.debug(f"making children stages for running on directory: {dir_in}, files: {part_filenames}")
         children_stages = list()
         for part_filename in part_filenames:
             logger.debug(f"making children stage {part_filename} from {dir_in}...")
-            full_filename = os.path.join(dir_in, part_filename)
+            full_filename_in = os.path.join(dir_in, part_filename)
+            full_filename_out = os.path.join(dir_out, part_filename) if dir_out == path_out else path_out
             cfg_copy = copy.deepcopy(self.cfg)
-            cfg_copy["in_artifacts"]["filename_in"] = full_filename
+            cfg_copy["in_artifacts"]["filename_in"] = full_filename_in
+            cfg_copy["out_artifacts"]["filename_out"] = full_filename_out
             children_stages.append(self.stage_class(cfg_copy, self.func))
         
         return children_stages

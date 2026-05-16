@@ -214,7 +214,6 @@ def prepare_local_eval(
     train_path: str,
     item_features_path: str,
     contact_eids_path: str,
-    out_path: str,
     synth_threshold: str = DEFAULT_SYNTH_THRESHOLD,
     write_train_part: bool = False,
     items_blacklist_path: str | None = None
@@ -274,14 +273,13 @@ class PrepareLocalEvalStage(BaseStage):
         assert "contact_eids_path" in self.cfg["in_artifacts"]
 
         assert "out_artifacts" in self.cfg
-        assert "out_path" in self.cfg["out_artifacts"]
+        assert "filename_out" in self.cfg["out_artifacts"]
 
     def load_artifacts(self):
         return {
             "train_path": self.cfg["in_artifacts"]["filename_in"],
             "item_features_path": self.cfg["in_artifacts"]["item_features_path"],
             "contact_eids_path": self.cfg["in_artifacts"]["contact_eids_path"],
-            "out_path": self.cfg["out_artifacts"]["out_path"],
         }
 
     def parse_kwargs(self):
@@ -290,7 +288,7 @@ class PrepareLocalEvalStage(BaseStage):
     def write_artifacts(self, run_result):
         super().write_artifacts(run_result)
 
-        out_path = Path(self.cfg["out_artifacts"]["out_path"])
+        out_path = Path(self.cfg["out_artifacts"]["filename_out"])
         out_path.parent.mkdir(parents=True, exist_ok=True)
 
         users_path = out_path.with_stem("users_" + out_path.stem)
