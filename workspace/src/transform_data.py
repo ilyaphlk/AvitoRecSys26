@@ -225,7 +225,6 @@ class JoinTablesStage(BaseStage):
         assert isinstance(self.cfg["in_artifacts"]["join_tables"], dict), "join tables must be a dict of [join_key, path_to_table]"
 
         assert "kwargs" in self.cfg
-        assert "cfg" in self.cfg["kwargs"]
 
         assert "out_artifacts" in self.cfg
         assert "filename_out" in self.cfg["out_artifacts"]
