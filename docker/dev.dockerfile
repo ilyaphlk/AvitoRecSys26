@@ -20,3 +20,4 @@ WORKDIR /project
 COPY requirements.txt .
 RUN python3.11 -m pip install --no-cache-dir --timeout=300 -r requirements.txt
 RUN python3.11 -m pip install --force-reinstall cffi
+RUN python3.11 -m pip install --upgrade s3fs
