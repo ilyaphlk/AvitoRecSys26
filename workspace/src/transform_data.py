@@ -244,7 +244,7 @@ class JoinTablesStage(BaseStage):
             logger.debug(f"scanning {part_filename} from {dir_in}...")
             read_path = os.path.join(dir_in, part_filename)
             parts.append(utils.scan_parquet(read_path))
-            #mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, read_path))
+
         return {**res, "frames": parts}
 
     
