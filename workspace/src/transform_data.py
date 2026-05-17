@@ -206,6 +206,63 @@ class DataTransformStage(BaseStage):
         return self.cfg["kwargs"]
 
 
+def join_tables(frames, join_tables):
+    for idx in range(len(frames)):
+        for join_key, jt in join_tables.items():
+            frames[idx] = frames[idx].join(jt["name"], on=join_key, how=jt["join_type"])
+    return frames      
+
+
+class JoinTablesStage(BaseStage):
+    def assert_args_in_cfg(self):
+        assert "in_artifacts" in self.cfg
+        assert "filename_in" in self.cfg["in_artifacts"]
+        assert "join_tables" in self.cfg["in_artifacts"]
+        assert isinstance(self.cfg["in_artifacts"]["join_tables"], dict), "join tables must be a dict of [join_key, path_to_table]"
+
+        assert "kwargs" in self.cfg
+        assert "cfg" in self.cfg["kwargs"]
+
+        assert "out_artifacts" in self.cfg
+        assert "filename_out" in self.cfg["out_artifacts"]
+
+        assert (  #either both are files or both are dirs; out dir must end in a "/"
+            not(is_dirlike(self.cfg["in_artifacts"]["filename_in"]) ^ is_dirlike(self.cfg["out_artifacts"]["filename_out"]))
+            or (is_dirlike(self.cfg["in_artifacts"]["filename_in"]) and self.cfg["in_artifacts"].get("filename_accum", None) is not None)
+        )    
+
+    def load_artifacts(self):
+        path_in = self.cfg["in_artifacts"]["filename_in"]
+        res = {"join_tables": {k: utils.scan_parquet(v) for k, v in self.cfg["in_artifacts"]["join_tables"].items()}}
+
+        dir_in, filename_filter = parse_path_in(path_in)
+        parts = []
+        for part_filename in sorted(list(filter(filename_filter, utils.listdir(dir_in)))):
+            logger.debug(f"scanning {part_filename} from {dir_in}...")
+            read_path = os.path.join(dir_in, part_filename)
+            parts.append(utils.scan_parquet(read_path))
+            #mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, read_path))
+        return {**res, "frames": parts}
+
+    
+    def write_artifacts(self, res: list[pl.LazyFrame | pl.DataFrame] | list[dict[tuple, pl.LazyFrame | pl.DataFrame]]):
+        super().write_artifacts(res)
+        path_in = self.cfg["in_artifacts"]["filename_in"]
+        path_out = self.cfg["out_artifacts"]["filename_out"]
+
+        dir_in, filename_filter = parse_path_in(path_in)
+        part_filenames = sorted(list(filter(filename_filter, utils.listdir(dir_in))))
+        for elem, part_filename in zip(res, part_filenames):
+            logger.info(f"{'#'*20}\nProcessing {part_filename} from {dir_in}...\n")
+            write_path = os.path.join(path_out, part_filename) if is_dirlike(path_out) else path_out
+            utils.sink_parquet(elem, write_path, remove_local=False) if isinstance(elem, pl.LazyFrame) else utils.write_parquet(elem, write_path, remove_local=False)
+            mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, write_path))
+
+    def parse_kwargs(self):
+        return self.cfg["kwargs"]
+
+
+
 class SequentialStage(BaseStage):
     def __init__(self, cfg, stage_class, func, run_name=None):
         """
@@ -282,9 +339,7 @@ class MakeAccumStage(BaseStage):
         utils.sink_parquet(run_result, path_out, remove_local=False)
         mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, path_out))
 
-def main():
-    # assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
-    # preprocess_config_path = sys.argv[1]
+def test_aggregate_combine():
     preprocess_config_path = "/project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml"
 
     aggregate_cfg = load_config(preprocess_config_path)["aggregate"]
@@ -302,7 +357,25 @@ def main():
         SequentialStage(combine_cfg, DataTransformStage, process_data)
     ]
 
-    with mlflow.start_run(run_name="data_transform_pipeline"):
+    return stages, test_aggregate_combine.__name__
+
+def test_dilter_df():
+    config_path = "/project/workspace/config/data/eval/dt_filter_raw_train_debug.yml"
+    filter_cfg = load_config(config_path)["filter_by_dt"]
+
+    stages = [
+        SequentialStage(filter_cfg, DataTransformStage, process_data)
+    ]
+
+    return stages, test_dilter_df.__name__
+
+def test(func):
+    # assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
+    # preprocess_config_path = sys.argv[1]
+    
+    stages, run_name = func()
+
+    with mlflow.start_run(run_name=run_name):
         logger.info(f"total stages: {len(stages)}")
         for idx, stage in enumerate(stages):
             logger.info(f"running stage idx={idx}")
@@ -310,5 +383,6 @@ def main():
         logger.info("transformed data successfully.")
 
 
+
 if __name__ == "__main__":
-    main()
+    test(test_dilter_df)
