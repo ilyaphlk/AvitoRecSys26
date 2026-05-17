@@ -105,6 +105,9 @@ def make_df(df, cfg, df_accum=None):
 
     filters_no_agg_fields = make_valid_filters(df, filters)
 
+    if set(filters.keys()) != set(filters_no_agg_fields.keys()) and not agg_frames:
+        logger.warning("\n#####\nsome filters were not applied, because the required columns are missing\n#####")
+
     df = df.filter(*filters_no_agg_fields.values())
 
     filtered_agg_frames = dict()
@@ -140,12 +143,8 @@ def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
 
     return [make_df(elem, cfg) for elem in frames]
 
-
-def is_dirlike(path):
-    return os.path.split(path)[-1] == ""
-
 def parse_path_in(path_in):
-        if is_dirlike(path_in):
+        if utils.is_dirlike(path_in):
             return path_in, lambda s: s.startswith("part_")
 
         return str(Path(path_in).parent), lambda s: s == str(Path(path_in).name)
@@ -163,8 +162,8 @@ class DataTransformStage(BaseStage):
         assert "filename_out" in self.cfg["out_artifacts"]
 
         assert (  #either both are files or both are dirs; out dir must end in a "/"
-            not(is_dirlike(self.cfg["in_artifacts"]["filename_in"]) ^ is_dirlike(self.cfg["out_artifacts"]["filename_out"]))
-            or (is_dirlike(self.cfg["in_artifacts"]["filename_in"]) and self.cfg["in_artifacts"].get("filename_accum", None) is not None)
+            not(utils.is_dirlike(self.cfg["in_artifacts"]["filename_in"]) ^ utils.is_dirlike(self.cfg["out_artifacts"]["filename_out"]))
+            or (utils.is_dirlike(self.cfg["in_artifacts"]["filename_in"]) and self.cfg["in_artifacts"].get("filename_accum", None) is not None)
         )    
 
     def load_artifacts(self):
@@ -177,7 +176,8 @@ class DataTransformStage(BaseStage):
 
         dir_in, filename_filter = parse_path_in(path_in)
         parts = []
-        for part_filename in sorted(list(filter(filename_filter, utils.listdir(dir_in)))):
+        dir_content = utils.listdir(dir_in)
+        for part_filename in sorted(list(filter(filename_filter, dir_content))):
             logger.debug(f"scanning {part_filename} from {dir_in}...")
             read_path = os.path.join(dir_in, part_filename)
             parts.append(utils.scan_parquet(read_path))
@@ -188,22 +188,21 @@ class DataTransformStage(BaseStage):
         super().write_artifacts(res)
         path_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
-        need_keys = self.cfg["kwargs"]["cfg"].get("append_keys_to_filename", True)
 
         dir_in, filename_filter = parse_path_in(path_in)
         part_filenames = sorted(list(filter(filename_filter, utils.listdir(dir_in))))
         for elem, part_filename in zip(res, part_filenames):
             logger.info(f"{'#'*20}\nProcessing {part_filename} from {dir_in}...\n")
 
-            write_path = os.path.join(path_out, part_filename) if is_dirlike(path_out) else path_out
+            write_path = os.path.join(path_out, part_filename) if utils.is_dirlike(path_out) else path_out
             utils.sink_parquet(elem["df"], write_path, remove_local=False, log_artifact=True) if isinstance(elem["df"], pl.LazyFrame) else utils.write_parquet(elem["df"], write_path, remove_local=False, log_artifact=True)
 
-            if "filtered_agg_frames" in res:
+            if "filtered_agg_frames" in elem:
                 # case of join_back: False
-                for join_keys, df in res["filtered_agg_frames"].items():
-                    p = Path(part_filename)
-                    part_filename_keys = "_".join([str(p.stem), *sorted(join_keys)]) + p.suffix if need_keys else part_filename
-                    write_path = os.path.join(path_out, part_filename_keys) if is_dirlike(path_out) else path_out
+                for join_keys, df in elem["filtered_agg_frames"].items():
+                    logger.debug(f"processing {join_keys} agg part...")
+                    keys_subdir = "_".join(sorted(join_keys))
+                    write_path = os.path.join(path_out if utils.is_dirlike(path_out) else Path(path_out).parent, keys_subdir, part_filename)
                     utils.sink_parquet(df, write_path, remove_local=False, log_artifact=True) if isinstance(df, pl.LazyFrame) else utils.write_parquet(df, write_path, remove_local=False, log_artifact=True)
 
     def parse_kwargs(self):
@@ -230,8 +229,8 @@ class JoinTablesStage(BaseStage):
         assert "filename_out" in self.cfg["out_artifacts"]
 
         assert (  #either both are files or both are dirs; out dir must end in a "/"
-            not(is_dirlike(self.cfg["in_artifacts"]["filename_in"]) ^ is_dirlike(self.cfg["out_artifacts"]["filename_out"]))
-            or (is_dirlike(self.cfg["in_artifacts"]["filename_in"]) and self.cfg["in_artifacts"].get("filename_accum", None) is not None)
+            not(utils.is_dirlike(self.cfg["in_artifacts"]["filename_in"]) ^ utils.is_dirlike(self.cfg["out_artifacts"]["filename_out"]))
+            or (utils.is_dirlike(self.cfg["in_artifacts"]["filename_in"]) and self.cfg["in_artifacts"].get("filename_accum", None) is not None)
         )    
 
     def load_artifacts(self):
@@ -257,7 +256,7 @@ class JoinTablesStage(BaseStage):
         part_filenames = sorted(list(filter(filename_filter, utils.listdir(dir_in))))
         for elem, part_filename in zip(res, part_filenames):
             logger.info(f"{'#'*20}\nProcessing {part_filename} from {dir_in}...\n")
-            write_path = os.path.join(path_out, part_filename) if is_dirlike(path_out) else path_out
+            write_path = os.path.join(path_out, part_filename) if utils.is_dirlike(path_out) else path_out
             utils.sink_parquet(elem, write_path, remove_local=False, log_artifact=True) if isinstance(elem, pl.LazyFrame) else utils.write_parquet(elem, write_path, remove_local=False, log_artifact=True)
 
     def parse_kwargs(self):
@@ -370,6 +369,28 @@ def test_dilter_df():
 
     return stages, test_dilter_df.__name__
 
+def test_aggregate_tables():
+    config_path = "/project/workspace/config/data/features/counters_local_shows_clicks_debug.yml"
+    agg_cfg = load_config(config_path)["aggregate_partitions"]
+
+    stages = [
+        SequentialStage(agg_cfg, DataTransformStage, process_data)
+    ]
+
+    return stages, test_aggregate_tables.__name__
+
+def test_make_blacklist():
+    config_path = "/project/workspace/config/data/features/counters_local_shows_clicks_debug.yml"
+    accum_cfg = load_config(config_path)["make_accum_item_id"]
+    blacklist_cfg = load_config(config_path)["make_item_id_blacklist_sequential"]
+
+    stages = [
+        MakeAccumStage(accum_cfg, make_empty_df),
+        SequentialStage(blacklist_cfg, DataTransformStage, process_data),
+    ]
+
+    return stages, test_make_blacklist.__name__
+
 def test(func):
     # assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
     # preprocess_config_path = sys.argv[1]
@@ -390,4 +411,4 @@ def test(func):
 
 
 if __name__ == "__main__":
-    test(test_dilter_df)
+    test(test_make_blacklist)
