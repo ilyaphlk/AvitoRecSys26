@@ -144,10 +144,10 @@ def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
     return [make_df(elem, cfg) for elem in frames]
 
 def parse_path_in(path_in):
-        if utils.is_dirlike(path_in):
-            return path_in, lambda s: s.startswith("part_")
+    if utils.is_dirlike(path_in):
+        return path_in, lambda s: s.startswith("part_")
 
-        return str(Path(path_in).parent), lambda s: s == str(Path(path_in).name)
+    return str(Path(path_in).parent), lambda s: s == str(Path(path_in).name)
 
 
 class DataTransformStage(BaseStage):
