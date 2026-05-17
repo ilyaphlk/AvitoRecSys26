@@ -327,19 +327,17 @@ class PrepareLocalEvalStage(BaseStage):
         super().write_artifacts(run_result)
 
         out_path = Path(self.cfg["out_artifacts"]["filename_out"]).with_suffix(".csv")
-        utils.write_csv(run_result["ground_truth"], out_path, remove_local=False)
+        utils.write_csv(run_result["ground_truth"], out_path, remove_local=False, log_artifact=True)
         n_rows = run_result["ground_truth"].height
         n_unique_users = run_result["ground_truth"]['user_id'].n_unique()
         logger.info(
             f"{out_path}: {n_rows:,} rows, "
             f"{n_unique_users:,} users with >=1 target"
         )
-        mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, out_path))
 
         users_path = Path(os.path.join(out_path.parent, "users", out_path.name))
-        utils.write_csv(run_result["sampled"], users_path, remove_local=False)
+        utils.write_csv(run_result["sampled"], users_path, remove_local=False, log_artifact=True)
         logger.info(f"User → bucket map saved to {users_path}")
-        mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, users_path))
 
         if self.kwargs.get("write_train_part", False):
             def write_user_events(key):
@@ -351,11 +349,10 @@ class PrepareLocalEvalStage(BaseStage):
                     os.path.join(out_path.parent, subdirs[key], out_path.name)
                 ).with_suffix(".pq")
 
-                utils.sink_parquet(run_result[key], user_events_path, remove_local=False)
+                utils.sink_parquet(run_result[key], user_events_path, remove_local=False, log_artifact=True)
                 n_rows_user_events = run_result[key].select(pl.len()).collect().item()
                 n_unique_items_user_events = run_result[key].select(pl.col('item_id').n_unique()).collect().item()
                 logger.info(f"{user_events_path}: {n_rows_user_events} rows, {n_unique_items_user_events} unique items.")
-                mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, user_events_path))
                 mlflow.log_metrics({f"n_rows_{key}": n_rows_user_events, f"n_unique_items_{key}": n_unique_items_user_events})
 
             write_user_events("eval_user_events")

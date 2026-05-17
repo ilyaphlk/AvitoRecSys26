@@ -173,7 +173,6 @@ class DataTransformStage(BaseStage):
         if "filename_accum" in self.cfg["in_artifacts"]:
             filename_accum = self.cfg["in_artifacts"]["filename_accum"]
             df_accum = utils.scan_parquet(filename_accum)
-            #mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, filename_accum))
         res = {"df_accum": df_accum}
 
         dir_in, filename_filter = parse_path_in(path_in)
@@ -182,7 +181,6 @@ class DataTransformStage(BaseStage):
             logger.debug(f"scanning {part_filename} from {dir_in}...")
             read_path = os.path.join(dir_in, part_filename)
             parts.append(utils.scan_parquet(read_path))
-            #mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, read_path))
         return {**res, "frames": parts}
 
     
@@ -198,8 +196,7 @@ class DataTransformStage(BaseStage):
             logger.info(f"{'#'*20}\nProcessing {part_filename} from {dir_in}...\n")
 
             write_path = os.path.join(path_out, part_filename) if is_dirlike(path_out) else path_out
-            utils.sink_parquet(elem["df"], write_path, remove_local=False) if isinstance(elem["df"], pl.LazyFrame) else utils.write_parquet(elem["df"], write_path, remove_local=False)
-            mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, write_path))
+            utils.sink_parquet(elem["df"], write_path, remove_local=False, log_artifact=True) if isinstance(elem["df"], pl.LazyFrame) else utils.write_parquet(elem["df"], write_path, remove_local=False, log_artifact=True)
 
             if "filtered_agg_frames" in res:
                 # case of join_back: False
@@ -207,8 +204,7 @@ class DataTransformStage(BaseStage):
                     p = Path(part_filename)
                     part_filename_keys = "_".join([str(p.stem), *sorted(join_keys)]) + p.suffix if need_keys else part_filename
                     write_path = os.path.join(path_out, part_filename_keys) if is_dirlike(path_out) else path_out
-                    utils.sink_parquet(df, write_path, remove_local=False) if isinstance(df, pl.LazyFrame) else utils.write_parquet(df, write_path, remove_local=False)
-                    mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, write_path))
+                    utils.sink_parquet(df, write_path, remove_local=False, log_artifact=True) if isinstance(df, pl.LazyFrame) else utils.write_parquet(df, write_path, remove_local=False, log_artifact=True)
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
@@ -263,8 +259,7 @@ class JoinTablesStage(BaseStage):
         for elem, part_filename in zip(res, part_filenames):
             logger.info(f"{'#'*20}\nProcessing {part_filename} from {dir_in}...\n")
             write_path = os.path.join(path_out, part_filename) if is_dirlike(path_out) else path_out
-            utils.sink_parquet(elem, write_path, remove_local=False) if isinstance(elem, pl.LazyFrame) else utils.write_parquet(elem, write_path, remove_local=False)
-            mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, write_path))
+            utils.sink_parquet(elem, write_path, remove_local=False, log_artifact=True) if isinstance(elem, pl.LazyFrame) else utils.write_parquet(elem, write_path, remove_local=False, log_artifact=True)
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
@@ -344,8 +339,7 @@ class MakeAccumStage(BaseStage):
     def write_artifacts(self, run_result):
         super().write_artifacts(run_result)
         path_out = self.cfg["out_artifacts"]["filename_accum"]
-        utils.sink_parquet(run_result, path_out, remove_local=False)
-        mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, path_out))
+        utils.sink_parquet(run_result, path_out, remove_local=False, log_artifact=True)
 
 def test_aggregate_combine():
     preprocess_config_path = "/project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml"
