@@ -3,6 +3,7 @@ from typing import Dict, Any
 from pathlib import Path
 import mlflow
 import os
+import utils
 
 
 class StageStatus(Enum):
@@ -44,12 +45,12 @@ class BaseStage:
     
     def write_artifacts(self, run_result):
         """
-            write run artifacts to disk
+            write run artifacts to disk (locally)
         """
         for fp in self.cfg["out_artifacts"].values():
             if os.path.split(fp)[-1] == "":  # check if dir-like
                 fp = os.path.join(fp, "placeholder")
-            p = Path(fp)
+            p = Path(utils.LOCAL_DATA_DIR, fp)
             p.parent.mkdir(parents=True, exist_ok=True)
     
     def run(self):
