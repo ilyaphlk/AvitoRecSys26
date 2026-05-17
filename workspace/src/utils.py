@@ -85,7 +85,6 @@ def listdir(path: str) -> list[str]:
     if STORAGE_BACKEND == "s3":
         logger.debug(f"listing s3 files in {S3_DATA_DIR}/{path}")
         contents = get_s3_client().list_objects_v2(Bucket=S3_BUCKET, Prefix=f"{S3_DATA_DIR}/{path}").get("Contents", [])
-        logger.debug(f"returned contents: {contents}")
         part_filenames = [Path(obj["Key"]).name for obj in contents]
         logger.debug(f"part_filenames: {part_filenames}")
         return part_filenames
