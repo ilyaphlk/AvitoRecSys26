@@ -197,7 +197,7 @@ class DataTransformStage(BaseStage):
             write_path = os.path.join(path_out, part_filename) if utils.is_dirlike(path_out) else path_out
             utils.sink_parquet(elem["df"], write_path, remove_local=False, log_artifact=True) if isinstance(elem["df"], pl.LazyFrame) else utils.write_parquet(elem["df"], write_path, remove_local=False, log_artifact=True)
 
-            if "filtered_agg_frames" in elem:
+            if "filtered_agg_frames" in elem and not self.kwargs["cfg"].get("incremental_accum", False):
                 # case of join_back: False
                 for join_keys, df in elem["filtered_agg_frames"].items():
                     logger.debug(f"processing {join_keys} agg part...")
@@ -411,4 +411,4 @@ def test(func):
 
 
 if __name__ == "__main__":
-    test(test_make_blacklist)
+    test(test_join_tables)
