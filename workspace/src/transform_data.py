@@ -96,13 +96,20 @@ def make_filters(cfg):
 def apply_filters(df, filter_expressions):
     return df.filter(*filter_expressions)
 
+def make_valid_filters(df, filters):
+    return {fname: f for fname, f in filters.items() if fname in df.collect_schema().names()}
+
 def make_df(df, cfg, df_accum=None):
     agg_frames = make_aggregations(df, cfg)
     filters = make_filters(cfg)
 
+    filters_no_agg_fields = make_valid_filters(df, filters)
+
+    df = df.filter(*filters_no_agg_fields.values())
+
     filtered_agg_frames = dict()
     for keys, agg_frame in agg_frames.items():
-        valid_filters = {fname: f for fname, f in filters.items() if fname in agg_frame.collect_schema().names()}
+        valid_filters = make_valid_filters(agg_frame, filters)
         agg_frame = agg_frame.filter(*valid_filters.values())
         filtered_agg_frames[keys] = agg_frame
 
@@ -118,11 +125,12 @@ def make_df(df, cfg, df_accum=None):
             agg_frame = agg_frame.lazy() if isinstance(agg_frame, pl.DataFrame) else agg_frame
             df = df.join(agg_frame, on=keys, how='inner')
 
-        df = df.filter(*filters.values())
+        # the joins are semi + inner, so everything should be filtered by now
+        # df = df.filter(*filters.values())
 
-        return df
+        return {"df": df}
 
-    return filtered_agg_frames
+    return {"df": df, "filtered_agg_frames": filtered_agg_frames}
 
 def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
     assert df_accum is None or (cfg.get("incremental_accum", False) and len(frames) == 1)
@@ -188,19 +196,19 @@ class DataTransformStage(BaseStage):
         part_filenames = sorted(list(filter(filename_filter, utils.listdir(dir_in))))
         for elem, part_filename in zip(res, part_filenames):
             logger.info(f"{'#'*20}\nProcessing {part_filename} from {dir_in}...\n")
-            if isinstance(elem, dict):
+
+            write_path = os.path.join(path_out, part_filename) if is_dirlike(path_out) else path_out
+            utils.sink_parquet(elem["df"], write_path, remove_local=False) if isinstance(elem["df"], pl.LazyFrame) else utils.write_parquet(elem["df"], write_path, remove_local=False)
+            mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, write_path))
+
+            if "filtered_agg_frames" in res:
                 # case of join_back: False
-                for join_keys, df in elem.items():
+                for join_keys, df in res["filtered_agg_frames"].items():
                     p = Path(part_filename)
                     part_filename_keys = "_".join([str(p.stem), *sorted(join_keys)]) + p.suffix if need_keys else part_filename
                     write_path = os.path.join(path_out, part_filename_keys) if is_dirlike(path_out) else path_out
                     utils.sink_parquet(df, write_path, remove_local=False) if isinstance(df, pl.LazyFrame) else utils.write_parquet(df, write_path, remove_local=False)
                     mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, write_path))
-            else:
-                write_path = os.path.join(path_out, part_filename) if is_dirlike(path_out) else path_out
-                utils.sink_parquet(elem, write_path, remove_local=False) if isinstance(elem, pl.LazyFrame) else utils.write_parquet(elem, write_path, remove_local=False)
-                mlflow.log_artifact(os.path.join(utils.LOCAL_DATA_DIR, write_path))
-
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
@@ -373,6 +381,11 @@ def test(func):
     # assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
     # preprocess_config_path = sys.argv[1]
     
+    logger.debug("setting mlflow uri...")
+    mlflow.set_tracking_uri("http://localhost:5000")
+    logger.debug("setting mlflow exp...")
+    mlflow.set_experiment(experiment_name="debug")
+
     stages, run_name = func()
 
     with mlflow.start_run(run_name=run_name):
@@ -381,7 +394,6 @@ def test(func):
             logger.info(f"running stage idx={idx}")
             stage.run()
         logger.info("transformed data successfully.")
-
 
 
 if __name__ == "__main__":
