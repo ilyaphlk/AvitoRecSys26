@@ -321,7 +321,7 @@ class JoinTablesStage(BaseStage):
         path_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
 
-        dir_in, part_filenames = parse_path_in(path_in)
+        _, part_filenames = parse_path_in(path_in)
         dir_out, out_filenames = path_out, part_filenames
         if utils.path_type(path_out) == utils.PathType.IS_FILE:
             dir_out, out_filenames = Path(path_out).parent, [path_out]
