@@ -45,7 +45,7 @@ make_item_id_blacklist:
   kwargs:
     cfg:
       join_back: False
-      append_keys_to_filename: False
+      overwrite_df_in: True  # works only if there is exactly one aggregation key set
       features:
         aggregations:
         - group_by: ["item_id"]
@@ -67,7 +67,7 @@ make_accum_user_id:
       events_cnt_by_user_id: UInt32
       clicks_cnt_by_user_id: UInt32
 
-make_user_id_blacklist_sequential:
+make_user_id_blacklist:
   in_artifacts:
     filename_in: processed/local_shows_clicks/user_id/part_*.parquet
   out_artifacts:
@@ -75,7 +75,6 @@ make_user_id_blacklist_sequential:
   kwargs:
     cfg:
       join_back: False
-      append_keys_to_filename: False
       filters:
         events_cnt_by_user_id: {"<": 10}
         clicks_cnt_by_user_id: {"<": 2}
