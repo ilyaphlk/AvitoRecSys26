@@ -37,17 +37,14 @@ make_accum_item_id:
       clicks_cnt_by_item_id: UInt32
 
 
-make_item_id_blacklist_sequential:
+make_item_id_blacklist:
   in_artifacts:
-    filename_in: processed/local_shows_clicks/item_id/
-    filename_accum: processed/local_shows_clicks/item_blacklist_shows_10_clicks_1.parquet
+    filename_in: processed/local_shows_clicks/item_id/part_*.parquet
   out_artifacts:
     filename_out: processed/local_shows_clicks/item_blacklist_shows_10_clicks_1.parquet
   kwargs:
     cfg:
       join_back: False
-      incremental_accum: True
-      eager_execution: True
       append_keys_to_filename: False
       features:
         aggregations:
@@ -72,15 +69,12 @@ make_accum_user_id:
 
 make_user_id_blacklist_sequential:
   in_artifacts:
-    filename_in: processed/local_shows_clicks/user_id/
-    filename_accum: processed/local_shows_clicks/user_blacklist_shows_10_clicks_2.parquet
+    filename_in: processed/local_shows_clicks/user_id/part_*.parquet
   out_artifacts:
     filename_out: processed/local_shows_clicks/user_blacklist_shows_10_clicks_2.parquet
   kwargs:
     cfg:
       join_back: False
-      incremental_accum: True
-      eager_execution: True
       append_keys_to_filename: False
       filters:
         events_cnt_by_user_id: {"<": 10}
