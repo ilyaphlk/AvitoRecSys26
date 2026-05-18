@@ -471,9 +471,9 @@ def full_whitelist_pipeline_aws():
         #("dt_filter", SequentialStage(filter_cfg, DataTransformStage, process_data, run_name="dt_filter")),
         #("make_agg", SequentialStage(agg_cfg, DataTransformStage, process_data, run_name="make_agg")),
         #("make_accum_item", MakeAccumStage(accum_item_cfg, make_empty_df, run_name="make_accum_item")),
-        ("blacklist_item", SequentialStage(blacklist_item_cfg, DataTransformStage, process_data, run_name="blacklist_item")),
+        ("blacklist_item", DataTransformStage(blacklist_item_cfg, process_data, run_name="blacklist_item")),
         #("make_accum_user", MakeAccumStage(accum_user_cfg, make_empty_df, run_name="make_accum_user")),
-        ("blacklist_user", SequentialStage(blacklist_user_cfg, DataTransformStage, process_data, run_name="blacklist_user")),
+        ("blacklist_user", DataTransformStage(blacklist_user_cfg, process_data, run_name="blacklist_user")),
         ("make_whitelist", SequentialStage(whitelist_by_antijoin_cfg, JoinTablesStage, join_tables, run_name="make_whitelist")),
     ])
 
