@@ -103,12 +103,13 @@ def make_df(df, cfg, df_accum=None):
     agg_frames = make_aggregations(df, cfg)
     filters = make_filters(cfg)
 
-    filters_no_agg_fields = make_valid_filters(df, filters)
+    # todo: rework completely! undesired results in case of blacklist
+    # filters_no_agg_fields = make_valid_filters(df, filters)
 
-    if set(filters.keys()) != set(filters_no_agg_fields.keys()) and not agg_frames:
-        logger.warning("\n#####\nsome filters were not applied, because the required columns are missing\n#####")
+    # if set(filters.keys()) != set(filters_no_agg_fields.keys()) and not agg_frames:
+    #     logger.warning("\n#####\nsome filters were not applied, because the required columns are missing\n#####")
 
-    df = df.filter(*filters_no_agg_fields.values())
+    # df = df.filter(*filters_no_agg_fields.values())
 
     filtered_agg_frames = dict()
     for keys, agg_frame in agg_frames.items():
@@ -128,8 +129,7 @@ def make_df(df, cfg, df_accum=None):
             agg_frame = agg_frame.lazy() if isinstance(agg_frame, pl.DataFrame) else agg_frame
             df = df.join(agg_frame, on=keys, how='inner')
 
-        # the joins are semi + inner, so everything should be filtered by now
-        # df = df.filter(*filters.values())
+        df = df.filter(*filters.values())
 
         return {"df": df}
 
@@ -145,9 +145,11 @@ def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
 
 def parse_path_in(path_in):
     if utils.is_dirlike(path_in):
-        return path_in, lambda s: s.startswith("part_")
+        return path_in, lambda s: s.startswith("part_"), False
 
-    return str(Path(path_in).parent), lambda s: s == str(Path(path_in).name)
+    is_glob_pattern = ("*" in path_in or "[" in path_in or "]" in path_in)
+
+    return str(Path(path_in).parent), lambda s: s == str(Path(path_in).name), is_glob_pattern  # todo lambda doesn't work for glob
 
 
 class DataTransformStage(BaseStage):
@@ -164,7 +166,13 @@ class DataTransformStage(BaseStage):
         assert (  #either both are files or both are dirs; out dir must end in a "/"
             not(utils.is_dirlike(self.cfg["in_artifacts"]["filename_in"]) ^ utils.is_dirlike(self.cfg["out_artifacts"]["filename_out"]))
             or (utils.is_dirlike(self.cfg["in_artifacts"]["filename_in"]) and self.cfg["in_artifacts"].get("filename_accum", None) is not None)
-        )    
+        )
+
+        # if overwrite_df_in=True, require exactly one aggregation frame description
+        assert (
+            not(self.cfg["kwargs"]["cfg"].get("overwrite_df_in", False))
+            or (self.cfg["kwargs"]["cfg"]["features"].get("aggregations", False) and len(self.cfg["kwargs"]["cfg"]["features"]["aggregations"]) == 1)
+        )
 
     def load_artifacts(self):
         path_in = self.cfg["in_artifacts"]["filename_in"]
@@ -174,7 +182,10 @@ class DataTransformStage(BaseStage):
             df_accum = utils.scan_parquet(filename_accum)
         res = {"df_accum": df_accum}
 
-        dir_in, filename_filter = parse_path_in(path_in)
+        dir_in, filename_filter, is_glob_pattern = parse_path_in(path_in)
+        if is_glob_pattern:
+            return {**res, "frames": [utils.scan_parquet(path_in)]}
+
         parts = []
         dir_content = utils.listdir(dir_in)
         for part_filename in sorted(list(filter(filename_filter, dir_content))):
@@ -189,12 +200,22 @@ class DataTransformStage(BaseStage):
         path_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
 
-        dir_in, filename_filter = parse_path_in(path_in)
-        part_filenames = sorted(list(filter(filename_filter, utils.listdir(dir_in))))
+        dir_in, filename_filter, is_glob_pattern = parse_path_in(path_in)
+
+        part_filenames = sorted(list(filter(filename_filter, utils.listdir(dir_in)))) if not is_glob_pattern else [Path(path_in).name]
         for elem, part_filename in zip(res, part_filenames):
             logger.info(f"{'#'*20}\nProcessing {part_filename} from {dir_in}...\n")
 
             write_path = os.path.join(path_out, part_filename) if utils.is_dirlike(path_out) else path_out
+
+            if self.kwargs["cfg"].get("overwrite_df_in", False):
+                join_key = next(iter(elem["filtered_agg_frames"]))
+                if isinstance(elem["filtered_agg_frames"]["join_key"], pl.LazyFrame):
+                    utils.sink_parquet(elem["filtered_agg_frames"][join_key], write_path, remove_local=False, log_artifact=True)
+                else:
+                    utils.write_parquet(elem["filtered_agg_frames"][join_key], write_path, remove_local=False, log_artifact=True)
+                return
+
             utils.sink_parquet(elem["df"], write_path, remove_local=False, log_artifact=True) if isinstance(elem["df"], pl.LazyFrame) else utils.write_parquet(elem["df"], write_path, remove_local=False, log_artifact=True)
 
             if "filtered_agg_frames" in elem and not self.kwargs["cfg"].get("incremental_accum", False):
