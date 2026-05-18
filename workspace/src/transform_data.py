@@ -209,7 +209,7 @@ class DataTransformStage(BaseStage):
 
             if self.kwargs["cfg"].get("overwrite_df_in", False):
                 join_key = next(iter(elem["filtered_agg_frames"]))
-                if isinstance(elem["filtered_agg_frames"]["join_key"], pl.LazyFrame):
+                if isinstance(elem["filtered_agg_frames"][join_key], pl.LazyFrame):
                     utils.sink_parquet(elem["filtered_agg_frames"][join_key], write_path, remove_local=False, log_artifact=True)
                 else:
                     utils.write_parquet(elem["filtered_agg_frames"][join_key], write_path, remove_local=False, log_artifact=True)
