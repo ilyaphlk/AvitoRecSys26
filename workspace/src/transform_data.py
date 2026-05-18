@@ -142,13 +142,27 @@ def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
 
     return [make_df(elem, cfg) for elem in frames]
 
-def parse_path_in(path_in):
-    if utils.is_dirlike(path_in):
-        return path_in, lambda s: s.startswith("part_"), False
+# def parse_path_in(path_in):
+#     if utils.is_dirlike(path_in):
+#         return path_in, lambda s: s.startswith("part_"), False
 
-    is_glob_pattern = ("*" in path_in or "[" in path_in or "]" in path_in)
+#     is_glob_pattern = ("*" in path_in or "[" in path_in or "]" in path_in)
 
-    return str(Path(path_in).parent), lambda s: s == str(Path(path_in).name), is_glob_pattern  # todo lambda doesn't work for glob
+#     return str(Path(path_in).parent), lambda s: s == str(Path(path_in).name), is_glob_pattern  # todo lambda doesn't work for glob
+
+def parse_path_in(path_in) -> tuple[str, list[str]]:
+    """
+        returns a tuple of (dir_in, filename_parts): dir prefix and individual filenames
+    """
+    path_in_type = utils.path_type(path_in)
+    if path_in_type == utils.PathType.IS_FILE:
+        return Path(path_in).parent, [Path(path_in).name]
+    if path_in_type == utils.PathType.IS_DIR:
+        return path_in, sorted(list(filter(lambda s: s.starts_with("part_"), utils.listdir(path_in))))
+    
+    dir_in = Path(path_in).parent
+    return dir_in, sorted(utils.listdir(dir_in, glob_pattern=Path(path_in).name))  # todo support glob pattern in listdir
+
 
 def assert_paths_type_match(cfg):
     fin, fout = cfg["in_artifacts"]["filename_in"], cfg["out_artifacts"]["filename_out"]
@@ -287,14 +301,19 @@ class JoinTablesStage(BaseStage):
             ]
         }
 
-        dir_in, filename_filter, is_glob_pattern = parse_path_in(path_in)
+        dir_in, part_filenames = parse_path_in(path_in)
         parts = []
-        for part_filename in sorted(list(filter(filename_filter, utils.listdir(dir_in)))):
+        for part_filename in part_filenames:
             logger.debug(f"scanning {part_filename} from {dir_in}...")
             read_path = os.path.join(dir_in, part_filename)
-            parts.append(utils.scan_parquet(read_path))
+            if self.cfg["in_artifacts"].get("do_merge", False):
+                parts.append(read_path)
+            else:
+                parts.append(utils.scan_parquet(read_path))
+        
+        frames = [utils.scan_parquet(parts)] if self.cfg["in_artifacts"].get("do_merge", False) else parts
 
-        return {**res, "frames": parts}
+        return {**res, "frames": frames}
 
     
     def write_artifacts(self, res: list[pl.LazyFrame | pl.DataFrame] | list[dict[tuple, pl.LazyFrame | pl.DataFrame]]):
@@ -302,11 +321,14 @@ class JoinTablesStage(BaseStage):
         path_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
 
-        dir_in, filename_filter, is_glob_pattern = parse_path_in(path_in)
-        part_filenames = sorted(list(filter(filename_filter, utils.listdir(dir_in))))
-        for elem, part_filename in zip(res, part_filenames):
-            logger.info(f"{'#'*20}\nProcessing {part_filename} from {dir_in}...\n")
-            write_path = os.path.join(path_out, part_filename) if utils.is_dirlike(path_out) else path_out
+        dir_in, part_filenames = parse_path_in(path_in)
+        dir_out, out_filenames = path_out, part_filenames
+        if utils.path_type(path_out) == utils.PathType.IS_FILE:
+            dir_out, out_filenames = Path(path_out).parent, [path_out]
+            
+        for elem, out_filename in zip(res, out_filenames):
+            logger.info(f"{'#'*20}\nProcessing {dir_out}/{out_filename}...\n")
+            write_path = os.path.join(dir_out, out_filename)
             utils.sink_parquet(elem, write_path, remove_local=False, log_artifact=True) if isinstance(elem, pl.LazyFrame) else utils.write_parquet(elem, write_path, remove_local=False, log_artifact=True)
 
     def parse_kwargs(self):
