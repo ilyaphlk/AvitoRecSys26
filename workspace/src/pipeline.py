@@ -37,7 +37,7 @@ def make_stage_object(stage_dict):
 def run_pipeline():
     assert len(sys.argv) == 2, "please provide a path to yaml config with pipeline args"
     pipeline_config_path = sys.argv[1]
-    # pipeline_config_path = "/project/workspace/config/pipeline/make_item_blacklist_by_user_cnt.yml"
+    # pipeline_config_path = "/project/workspace/config/pipeline/make_local_eval.yml"
 
     pipeline_cfg = load_config(pipeline_config_path)["pipeline"]
 
