@@ -208,11 +208,15 @@ class DataTransformStage(BaseStage):
     def parse_kwargs(self):
         return self.cfg["kwargs"]
 
+def maybe_collect(df, eager=False):
+    return df.collect() if eager and isinstance(df, pl.LazyFrame) else df
 
-def join_tables(frames, join_tables):
+def join_tables(frames, join_tables, eager_execution=False):
     for idx in range(len(frames)):
-        for join_key, jt in join_tables.items():
-            frames[idx] = frames[idx].join(jt["name"], on=join_key, how=jt["join_type"])
+        for jt in join_tables:
+            frames[idx] = maybe_collect(frames[idx], eager_execution).join(
+                maybe_collect(jt["df"], eager_execution), on=jt["join_key"], how=jt["join_type"]
+            )
     return frames      
 
 
@@ -221,7 +225,7 @@ class JoinTablesStage(BaseStage):
         assert "in_artifacts" in self.cfg
         assert "filename_in" in self.cfg["in_artifacts"]
         assert "join_tables" in self.cfg["in_artifacts"]
-        assert isinstance(self.cfg["in_artifacts"]["join_tables"], dict), "join tables must be a dict of [join_key, path_to_table]"
+        assert isinstance(self.cfg["in_artifacts"]["join_tables"], list), "must be a list of dicts"
 
         assert "kwargs" in self.cfg
 
@@ -235,7 +239,13 @@ class JoinTablesStage(BaseStage):
 
     def load_artifacts(self):
         path_in = self.cfg["in_artifacts"]["filename_in"]
-        res = {"join_tables": {k: utils.scan_parquet(v) for k, v in self.cfg["in_artifacts"]["join_tables"].items()}}
+
+        res = {
+            "join_tables": [
+                {"df": utils.scan_parquet(jt["name"]), "join_key": jt["join_key"], "join_type": jt["join_type"]}
+                for jt in self.cfg["in_artifacts"]["join_tables"]
+            ]
+        }
 
         dir_in, filename_filter = parse_path_in(path_in)
         parts = []
@@ -390,6 +400,16 @@ def test_make_blacklist():
     ]
 
     return stages, test_make_blacklist.__name__
+
+def test_join_tables():
+    config_path = "/project/workspace/config/data/features/counters_local_shows_clicks_debug.yml"
+    join_cfg = load_config(config_path)["filter_by_blacklists"]
+
+    stages = [
+        SequentialStage(join_cfg, JoinTablesStage, join_tables),
+    ]
+
+    return stages, test_join_tables.__name__
 
 def test(func):
     # assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
