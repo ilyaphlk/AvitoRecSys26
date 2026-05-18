@@ -369,11 +369,11 @@ class SequentialStage(BaseStage):
         path_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
 
-        dir_in, filename_filter, is_glob_pattern = parse_path_in(path_in)
-        dir_out = path_out if os.path.split(path_out)[-1] == "" else str(Path(path_out).parent)
-        part_filenames = sorted(list(filter(filename_filter, utils.listdir(dir_in))))
+        dir_in, part_filenames = parse_path_in(path_in)
+        dir_out = Path(path_out).parent if utils.path_type(path_out) == utils.PathType.IS_FILE else path_out
+
         logger.debug(f"making children stages for running on directory: {dir_in}, files: {part_filenames}")
-        children_stages = list()
+        children_stages = []
         for part_filename in part_filenames:
             logger.debug(f"making children stage {part_filename} from {dir_in}...")
             full_filename_in = os.path.join(dir_in, part_filename)
