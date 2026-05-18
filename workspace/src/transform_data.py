@@ -10,7 +10,7 @@ from stage import BaseStage, StageStatus
 import mlflow
 import copy
 import utils
-
+from collections import OrderedDict
 
 PRED_OPS = {
     "<":  lambda col, val: col < val,
@@ -411,6 +411,30 @@ def test_join_tables():
 
     return stages, test_join_tables.__name__
 
+def full_whitelist_pipeline():
+    filter_config_path = "/project/workspace/config/data/eval/dt_filter_raw_train.yml"
+    filter_cfg = load_config(filter_config_path)["filter_by_dt"]
+
+    config_path = "/project/workspace/config/data/features/counters_local_shows_clicks.yml"
+    agg_cfg = load_config(config_path)["aggregate_partitions"]
+    accum_item_cfg = load_config(config_path)["make_accum_item_id"]
+    blacklist_item_cfg = load_config(config_path)["make_item_id_blacklist_sequential"]
+    accum_user_cfg = load_config(config_path)["make_accum_user_id"]
+    blacklist_user_cfg = load_config(config_path)["make_user_id_blacklist_sequential"]
+    whitelist_by_antijoin_cfg = load_config(config_path)["filter_by_blacklists"]
+
+    stages = OrderedDict([
+        #("dt_filter", SequentialStage(filter_cfg, DataTransformStage, process_data, run_name="dt_filter")),
+        #("make_agg", SequentialStage(agg_cfg, DataTransformStage, process_data, run_name="make_agg")),
+        ("make_accum_item", MakeAccumStage(accum_item_cfg, make_empty_df, run_name="make_accum_item")),
+        ("blacklist_item", SequentialStage(blacklist_item_cfg, DataTransformStage, process_data, run_name="blacklist_item")),
+        ("make_accum_user", MakeAccumStage(accum_user_cfg, make_empty_df, run_name="make_accum_user")),
+        ("blacklist_user", SequentialStage(blacklist_user_cfg, DataTransformStage, process_data, run_name="blacklist_user")),
+        ("make_whitelist", SequentialStage(whitelist_by_antijoin_cfg, JoinTablesStage, join_tables, run_name="make_whitelist")),
+    ])
+
+    return stages, full_whitelist_pipeline.__name__
+
 def test(func):
     # assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
     # preprocess_config_path = sys.argv[1]
@@ -418,17 +442,17 @@ def test(func):
     logger.debug("setting mlflow uri...")
     mlflow.set_tracking_uri("http://localhost:5000")
     logger.debug("setting mlflow exp...")
-    mlflow.set_experiment(experiment_name="debug")
+    mlflow.set_experiment(experiment_name="whitelist_pipeline")
 
     stages, run_name = func()
 
     with mlflow.start_run(run_name=run_name):
-        logger.info(f"total stages: {len(stages)}")
-        for idx, stage in enumerate(stages):
-            logger.info(f"running stage idx={idx}")
+        logger.info(f"starting pipeline with stages: {list(stages.keys())}")
+        for name, stage in stages.items():
+            logger.info(f"running stage: {name}")
             stage.run()
         logger.info("transformed data successfully.")
 
 
 if __name__ == "__main__":
-    test(test_join_tables)
+    test(full_whitelist_pipeline)
