@@ -150,6 +150,32 @@ def parse_path_in(path_in):
 
     return str(Path(path_in).parent), lambda s: s == str(Path(path_in).name), is_glob_pattern  # todo lambda doesn't work for glob
 
+def assert_paths_type_match(cfg):
+    fin, fout = cfg["in_artifacts"]["filename_in"], cfg["out_artifacts"]["filename_out"]
+    merge_inputs = cfg["in_artifacts"].get("do_merge", False)
+    partition_outputs = cfg["out_artifacts"].get("do_partition", False)
+    fin_type, fout_type = utils.path_type(fin), utils.path_type(fout)
+
+    
+    both_files = (fin_type == utils.PathType.IS_FILE and fout_type == utils.PathType.IS_FILE)
+    both_dirs = (
+        (fin_type == utils.PathType.IS_DIR or fin_type == utils.PathType.IS_GLOB)
+        and fout_type == utils.PathType.IS_DIR
+        and not(merge_inputs ^ partition_outputs)
+    )
+    merged_to_file = (
+        (fin_type == utils.PathType.IS_DIR or fin_type == utils.PathType.IS_GLOB)
+        and fout_type == utils.PathType.IS_FILE
+        and merge_inputs
+    )
+    partition_to_dir = (
+        (((fin_type == utils.PathType.IS_DIR or fin_type == utils.PathType.IS_GLOB) and merge_inputs) or fin_type == utils.PathType.IS_FILE)
+        and fout_type == utils.PathType.IS_DIR
+        and partition_outputs
+    )
+
+    assert both_files or both_dirs or merged_to_file or partition_to_dir, "filename_in/filename_out type mismatch"
+
 
 class DataTransformStage(BaseStage):
     def assert_args_in_cfg(self):
@@ -162,10 +188,7 @@ class DataTransformStage(BaseStage):
         assert "out_artifacts" in self.cfg
         assert "filename_out" in self.cfg["out_artifacts"]
 
-        assert (  #either both are files or both are dirs; out dir must end in a "/"
-            not(utils.is_dirlike(self.cfg["in_artifacts"]["filename_in"]) ^ utils.is_dirlike(self.cfg["out_artifacts"]["filename_out"]))
-            or (utils.is_dirlike(self.cfg["in_artifacts"]["filename_in"]) and self.cfg["in_artifacts"].get("filename_accum", None) is not None)
-        )
+        assert_paths_type_match(self.cfg)
 
         # if overwrite_df_in=True, require exactly one aggregation frame description
         assert (
@@ -252,10 +275,7 @@ class JoinTablesStage(BaseStage):
         assert "out_artifacts" in self.cfg
         assert "filename_out" in self.cfg["out_artifacts"]
 
-        assert (  #either both are files or both are dirs; out dir must end in a "/"
-            not(utils.is_dirlike(self.cfg["in_artifacts"]["filename_in"]) ^ utils.is_dirlike(self.cfg["out_artifacts"]["filename_out"]))
-            or (utils.is_dirlike(self.cfg["in_artifacts"]["filename_in"]) and self.cfg["in_artifacts"].get("filename_accum", None) is not None)
-        )    
+        assert_paths_type_match(self.cfg)
 
     def load_artifacts(self):
         path_in = self.cfg["in_artifacts"]["filename_in"]
