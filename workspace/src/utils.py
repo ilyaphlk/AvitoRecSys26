@@ -86,11 +86,10 @@ def is_dirlike(path):
 
 def listdir(path: str) -> list[str]:
     if STORAGE_BACKEND == "s3":
-
         logger.debug(f"listing s3 files in {S3_DATA_DIR}/{path}")
         contents = get_s3_client().list_objects_v2(Bucket=S3_BUCKET, Prefix=f"{S3_DATA_DIR}/{path}").get("Contents", [])
         logger.debug(f"returned contents: {contents}")
-        part_filenames = [Path(obj["Key"]).name for obj in contents]
+        part_filenames = [Path(obj["Key"]).name for obj in contents if (Path(obj["Key"]).parent == Path(S3_DATA_DIR, path))]  # todo: handle case where `path` is a file
         logger.debug(f"part_filenames: {part_filenames}")
         return part_filenames
     return os.listdir(os.path.join(LOCAL_DATA_DIR, path))
