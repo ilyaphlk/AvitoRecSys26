@@ -1,0 +1,11 @@
+filter_by_dt:
+  in_artifacts:
+    filename_in: raw/
+  out_artifacts:
+    filename_out: processed/raw_filter_dt/
+  kwargs:
+    cfg:
+      eager_execution: False
+      join_back: False
+      filters:
+        date_thr: {"<": "2026-04-08T00:00:00"}
