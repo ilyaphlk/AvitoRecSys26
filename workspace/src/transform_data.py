@@ -267,7 +267,7 @@ class JoinTablesStage(BaseStage):
             ]
         }
 
-        dir_in, filename_filter = parse_path_in(path_in)
+        dir_in, filename_filter, is_glob_pattern = parse_path_in(path_in)
         parts = []
         for part_filename in sorted(list(filter(filename_filter, utils.listdir(dir_in)))):
             logger.debug(f"scanning {part_filename} from {dir_in}...")
@@ -282,7 +282,7 @@ class JoinTablesStage(BaseStage):
         path_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
 
-        dir_in, filename_filter = parse_path_in(path_in)
+        dir_in, filename_filter, is_glob_pattern = parse_path_in(path_in)
         part_filenames = sorted(list(filter(filename_filter, utils.listdir(dir_in))))
         for elem, part_filename in zip(res, part_filenames):
             logger.info(f"{'#'*20}\nProcessing {part_filename} from {dir_in}...\n")
@@ -314,7 +314,7 @@ class SequentialStage(BaseStage):
         path_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
 
-        dir_in, filename_filter = parse_path_in(path_in)
+        dir_in, filename_filter, is_glob_pattern = parse_path_in(path_in)
         dir_out = path_out if os.path.split(path_out)[-1] == "" else str(Path(path_out).parent)
         part_filenames = sorted(list(filter(filename_filter, utils.listdir(dir_in))))
         logger.debug(f"making children stages for running on directory: {dir_in}, files: {part_filenames}")
