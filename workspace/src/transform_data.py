@@ -424,8 +424,8 @@ def full_whitelist_pipeline():
     whitelist_by_antijoin_cfg = load_config(config_path)["filter_by_blacklists"]
 
     stages = OrderedDict([
-        #("dt_filter", SequentialStage(filter_cfg, DataTransformStage, process_data, run_name="dt_filter")),
-        #("make_agg", SequentialStage(agg_cfg, DataTransformStage, process_data, run_name="make_agg")),
+        ("dt_filter", SequentialStage(filter_cfg, DataTransformStage, process_data, run_name="dt_filter")),
+        ("make_agg", SequentialStage(agg_cfg, DataTransformStage, process_data, run_name="make_agg")),
         ("make_accum_item", MakeAccumStage(accum_item_cfg, make_empty_df, run_name="make_accum_item")),
         ("blacklist_item", SequentialStage(blacklist_item_cfg, DataTransformStage, process_data, run_name="blacklist_item")),
         ("make_accum_user", MakeAccumStage(accum_user_cfg, make_empty_df, run_name="make_accum_user")),
@@ -434,6 +434,31 @@ def full_whitelist_pipeline():
     ])
 
     return stages, full_whitelist_pipeline.__name__
+
+def full_whitelist_pipeline_aws():
+    filter_config_path = "/project/workspace/config/data/eval/dt_filter_raw_train.yml"
+    filter_cfg = load_config(filter_config_path)["filter_by_dt"]
+
+    config_path = "/project/workspace/config/data/features/counters_local_shows_clicks_aws.yml"
+    agg_cfg = load_config(config_path)["aggregate_partitions"]
+    accum_item_cfg = load_config(config_path)["make_accum_item_id"]
+    blacklist_item_cfg = load_config(config_path)["make_item_id_blacklist"]
+    accum_user_cfg = load_config(config_path)["make_accum_user_id"]
+    blacklist_user_cfg = load_config(config_path)["make_user_id_blacklist"]
+    whitelist_by_antijoin_cfg = load_config(config_path)["filter_by_blacklists"]
+
+    stages = OrderedDict([
+        #("dt_filter", SequentialStage(filter_cfg, DataTransformStage, process_data, run_name="dt_filter")),
+        #("make_agg", SequentialStage(agg_cfg, DataTransformStage, process_data, run_name="make_agg")),
+        #("make_accum_item", MakeAccumStage(accum_item_cfg, make_empty_df, run_name="make_accum_item")),
+        ("blacklist_item", SequentialStage(blacklist_item_cfg, DataTransformStage, process_data, run_name="blacklist_item")),
+        #("make_accum_user", MakeAccumStage(accum_user_cfg, make_empty_df, run_name="make_accum_user")),
+        ("blacklist_user", SequentialStage(blacklist_user_cfg, DataTransformStage, process_data, run_name="blacklist_user")),
+        ("make_whitelist", SequentialStage(whitelist_by_antijoin_cfg, JoinTablesStage, join_tables, run_name="make_whitelist")),
+    ])
+
+    return stages, full_whitelist_pipeline_aws.__name__
+
 
 def test(func):
     # assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
@@ -455,4 +480,4 @@ def test(func):
 
 
 if __name__ == "__main__":
-    test(full_whitelist_pipeline)
+    test(full_whitelist_pipeline_aws)
