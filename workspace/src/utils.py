@@ -7,6 +7,9 @@ import io
 from loguru import logger
 from pathlib import Path
 import mlflow
+from enum import Enum
+import glob
+
 
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local")  # "local" or "s3"
 S3_BUCKET = os.getenv("S3_BUCKET", None)
@@ -84,7 +87,19 @@ def read_csv(path: str) -> pl.DataFrame:
 def is_dirlike(path):
     return os.path.split(path)[-1] == ""
 
-def listdir(path: str) -> list[str]:
+class PathType(Enum):
+    IS_FILE = 0
+    IS_DIR = 1
+    IS_GLOB = 2
+
+def path_type(path):
+    if is_dirlike(path):
+        return PathType.IS_DIR
+    if glob.has_magic(path):
+        return PathType.IS_GLOB
+    return PathType.IS_FILE
+
+def listdir(path: str, glob_pattern=None) -> list[str]:
     if STORAGE_BACKEND == "s3":
         logger.debug(f"listing s3 files in {S3_DATA_DIR}/{path}")
         contents = get_s3_client().list_objects_v2(Bucket=S3_BUCKET, Prefix=f"{S3_DATA_DIR}/{path}").get("Contents", [])
