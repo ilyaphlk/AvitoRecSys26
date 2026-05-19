@@ -266,7 +266,7 @@ class DataTransformStage(BaseStage):
         for elem, out_filename in zip(res, out_filenames):
             logger.info(f"{'#'*20}\nProcessing {dir_out}/{out_filename}...\n")
             write_path = os.path.join(dir_out, out_filename)
-            utils.sink_parquet(elem["df"], write_path, remove_local=False, log_artifact=True) if isinstance(elem["df"], pl.LazyFrame) else utils.write_parquet(elem["df"], write_path, remove_local=False, log_artifact=True)
+            utils.sink_parquet(elem["df"], write_path, remove_local=False, log_artifact=True)
 
             if "filtered_agg_frames" in elem:
                 # case of join_back: False
@@ -274,7 +274,7 @@ class DataTransformStage(BaseStage):
                     logger.debug(f"processing {join_keys} agg part...")
                     keys_subdir = "_".join(sorted(join_keys))
                     write_path = os.path.join(dir_out, keys_subdir, out_filename)
-                    utils.sink_parquet(df, write_path, remove_local=False, log_artifact=True) if isinstance(df, pl.LazyFrame) else utils.write_parquet(df, write_path, remove_local=False, log_artifact=True)
+                    utils.sink_parquet(df, write_path, remove_local=False, log_artifact=True)
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
@@ -343,7 +343,7 @@ class JoinTablesStage(BaseStage):
         for elem, out_filename in zip(res, out_filenames):
             logger.info(f"{'#'*20}\nProcessing {dir_out}/{out_filename}...\n")
             write_path = os.path.join(dir_out, out_filename)
-            utils.sink_parquet(elem, write_path, remove_local=False, log_artifact=True) if isinstance(elem, pl.LazyFrame) else utils.write_parquet(elem, write_path, remove_local=False, log_artifact=True)
+            utils.sink_parquet(elem, write_path, remove_local=False, log_artifact=True)
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
@@ -552,10 +552,10 @@ def full_whitelist_pipeline_aws_debug():
         #("make_agg", SequentialStage(agg_cfg, DataTransformStage, process_data, run_name="make_agg")),
         ("make_agg", DataTransformStage(agg_cfg, process_data, run_name="make_agg")),
         #("make_accum_item", MakeAccumStage(accum_item_cfg, make_empty_df, run_name="make_accum_item")),
-        ("blacklist_item", DataTransformStage(blacklist_item_cfg, process_data, run_name="blacklist_item")),
+        #("blacklist_item", DataTransformStage(blacklist_item_cfg, process_data, run_name="blacklist_item")),
         #("make_accum_user", MakeAccumStage(accum_user_cfg, make_empty_df, run_name="make_accum_user")),
         ("blacklist_user", DataTransformStage(blacklist_user_cfg, process_data, run_name="blacklist_user")),
-        ("make_whitelist", SequentialStage(whitelist_by_antijoin_cfg, JoinTablesStage, join_tables, run_name="make_whitelist")),
+        #("make_whitelist", SequentialStage(whitelist_by_antijoin_cfg, JoinTablesStage, join_tables, run_name="make_whitelist")),
     ])
 
     return stages, full_whitelist_pipeline_aws_debug.__name__
