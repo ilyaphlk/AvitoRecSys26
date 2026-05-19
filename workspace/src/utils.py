@@ -10,6 +10,7 @@ import mlflow
 from enum import Enum
 import glob
 import fnmatch
+from typing import Any
 
 
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local")  # "local" or "s3"
@@ -26,11 +27,32 @@ def get_s3_client():
         _s3_client = boto3.client("s3", region_name=AWS_DEFAULT_REGION)
     return _s3_client
 
+def sink_with_partition(df: pl.LazyFrame, root_path: str, key: str, mod=100, prefix="part_"):
+    """
+        df: a dataframe to sink
+        root_path: directory to sink to
+        key: integer column to partition by
+        mod: integer modulus, each partition id is a pl.col(key) % mod
+        prefix: prefix for each filename
+    """
+    n_digits = len(str(mod - 1)) + 1
+
+    df.with_columns(
+        (pl.col(key) % mod).alias("_mod")
+    ).sink_parquet(
+        pl.PartitionedPath(
+            root_path,
+            pl.PartitionBy("_mod", include_key=False),
+            file_path_provider=lambda part_id, _: f"{prefix}{part_id['_mod']:0{n_digits}d}.parquet"
+        )
+    )
+
 def sink_parquet(
         df: pl.LazyFrame | pl.DataFrame,
         path: str,
         remove_local=True,
         log_artifact=False,
+        partition_args: dict[str, Any] | None = None,
     ):
     """
         path is relative, e.g. 'features/train.parquet'
@@ -41,7 +63,7 @@ def sink_parquet(
 
     df = df.lazy() if isinstance(df, pl.DataFrame) else df
 
-    df.sink_parquet(full_path)
+    df.sink_parquet(full_path) if partition_args is None else sink_with_partition(df, full_path, **partition_args)
     if log_artifact:
         mlflow.log_artifact(full_path)
     if STORAGE_BACKEND == "s3":
