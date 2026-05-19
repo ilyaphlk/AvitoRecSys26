@@ -9,6 +9,7 @@ from pathlib import Path
 import mlflow
 from enum import Enum
 import glob
+import fnmatch
 
 
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local")  # "local" or "s3"
@@ -100,14 +101,19 @@ def path_type(path):
     return PathType.IS_FILE
 
 def listdir(path: str, glob_pattern=None) -> list[str]:
+    # todo handle case where path is file-like
     if STORAGE_BACKEND == "s3":
         logger.debug(f"listing s3 files in {S3_DATA_DIR}/{path}")
         contents = get_s3_client().list_objects_v2(Bucket=S3_BUCKET, Prefix=f"{S3_DATA_DIR}/{path}").get("Contents", [])
         logger.debug(f"returned contents: {contents}")
-        part_filenames = [Path(obj["Key"]).name for obj in contents if (Path(obj["Key"]).parent == Path(S3_DATA_DIR, path))]  # todo: handle case where `path` is a file
+        part_filenames = [Path(obj["Key"]).name for obj in contents if (Path(obj["Key"]).parent == Path(S3_DATA_DIR, path))]  # filter only files, no subdirs
+        if glob_pattern is not None:
+            part_filenames = fnmatch.filter(part_filenames, glob_pattern)
         logger.debug(f"part_filenames: {part_filenames}")
         return part_filenames
-    return os.listdir(os.path.join(LOCAL_DATA_DIR, path))
+    
+    search_dir = os.path.join(LOCAL_DATA_DIR, path)
+    return os.listdir(search_dir) if glob_pattern is None else glob.glob(glob_pattern, root_dir=search_dir)
 
 
 def calc_metric(df_true, df_pred):
