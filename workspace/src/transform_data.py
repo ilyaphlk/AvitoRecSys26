@@ -165,7 +165,7 @@ def parse_path_in(path_in) -> tuple[str, list[str]]:
     if path_in_type == utils.PathType.IS_FILE:
         return Path(path_in).parent, [Path(path_in).name]
     if path_in_type == utils.PathType.IS_DIR:
-        return path_in, sorted(list(filter(lambda s: s.starts_with("part_"), utils.listdir(path_in))))
+        return path_in, sorted(list(filter(lambda s: s.startswith("part_"), utils.listdir(path_in))))
     
     dir_in = Path(path_in).parent
     return dir_in, sorted(utils.listdir(dir_in, glob_pattern=Path(path_in).name))  # todo support glob pattern in listdir
@@ -212,7 +212,8 @@ class DataTransformStage(BaseStage):
         assert_paths_type_match(self.cfg)
 
         has_exactly_one_agg = (
-            (self.cfg["kwargs"]["cfg"]["features"].get("aggregations", False)
+            "features" in self.cfg["kwargs"]["cfg"]
+            and (self.cfg["kwargs"]["cfg"]["features"].get("aggregations", False)
             and len(self.cfg["kwargs"]["cfg"]["features"]["aggregations"]) == 1)
         )
         overwrite_df_in = self.cfg["kwargs"]["cfg"].get("overwrite_df_in", False)
@@ -260,7 +261,7 @@ class DataTransformStage(BaseStage):
         _, part_filenames = parse_path_in(path_in)
         dir_out, out_filenames = path_out, part_filenames
         if utils.path_type(path_out) == utils.PathType.IS_FILE:
-            dir_out, out_filenames = Path(path_out).parent, [path_out]
+            dir_out, out_filenames = Path(path_out).parent, [Path(path_out).name]
             
         for elem, out_filename in zip(res, out_filenames):
             logger.info(f"{'#'*20}\nProcessing {dir_out}/{out_filename}...\n")
@@ -337,7 +338,7 @@ class JoinTablesStage(BaseStage):
         _, part_filenames = parse_path_in(path_in)
         dir_out, out_filenames = path_out, part_filenames
         if utils.path_type(path_out) == utils.PathType.IS_FILE:
-            dir_out, out_filenames = Path(path_out).parent, [path_out]
+            dir_out, out_filenames = Path(path_out).parent, [Path(path_out).name]
             
         for elem, out_filename in zip(res, out_filenames):
             logger.info(f"{'#'*20}\nProcessing {dir_out}/{out_filename}...\n")
@@ -534,6 +535,31 @@ def full_whitelist_pipeline_aws():
 
     return stages, full_whitelist_pipeline_aws.__name__
 
+def full_whitelist_pipeline_aws_debug():
+    # filter_config_path = "/project/workspace/config/data/eval/dt_filter_raw_train_debug.yml"
+    # filter_cfg = load_config(filter_config_path)["filter_by_dt"]
+
+    config_path = "/project/workspace/config/data/features/counters_local_shows_clicks_aws_debug.yml"
+    agg_cfg = load_config(config_path)["aggregate_partitions"]
+    accum_item_cfg = load_config(config_path)["make_accum_item_id"]
+    blacklist_item_cfg = load_config(config_path)["make_item_id_blacklist"]
+    accum_user_cfg = load_config(config_path)["make_accum_user_id"]
+    blacklist_user_cfg = load_config(config_path)["make_user_id_blacklist"]
+    whitelist_by_antijoin_cfg = load_config(config_path)["filter_by_blacklists"]
+
+    stages = OrderedDict([
+        #("dt_filter", SequentialStage(filter_cfg, DataTransformStage, process_data, run_name="dt_filter")),
+        #("make_agg", SequentialStage(agg_cfg, DataTransformStage, process_data, run_name="make_agg")),
+        ("make_agg", DataTransformStage(agg_cfg, process_data, run_name="make_agg")),
+        #("make_accum_item", MakeAccumStage(accum_item_cfg, make_empty_df, run_name="make_accum_item")),
+        ("blacklist_item", DataTransformStage(blacklist_item_cfg, process_data, run_name="blacklist_item")),
+        #("make_accum_user", MakeAccumStage(accum_user_cfg, make_empty_df, run_name="make_accum_user")),
+        ("blacklist_user", DataTransformStage(blacklist_user_cfg, process_data, run_name="blacklist_user")),
+        ("make_whitelist", SequentialStage(whitelist_by_antijoin_cfg, JoinTablesStage, join_tables, run_name="make_whitelist")),
+    ])
+
+    return stages, full_whitelist_pipeline_aws_debug.__name__
+
 
 def test(func):
     # assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
@@ -555,4 +581,4 @@ def test(func):
 
 
 if __name__ == "__main__":
-    test(full_whitelist_pipeline_aws)
+    test(full_whitelist_pipeline_aws_debug)
