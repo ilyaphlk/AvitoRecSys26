@@ -42,9 +42,15 @@ def sink_with_partition(df: pl.LazyFrame, root_path: str, key: str, mod=100, pre
     """
     n_digits = len(str(mod - 1)) + 1
     alias = "__mod"
+
+    written_files = set()
+
     def fp_provider(fp_args: pl.FileProviderArgs):
         part_val = fp_args.partition_keys[alias].item()
-        return f"{prefix}{part_val:0{n_digits}d}.parquet"
+        full_path = f"{prefix}{part_val:0{n_digits}d}.parquet"
+        written_files.add(full_path)
+        logger.debug(f"called fp_provider, returning {full_path}...")
+        return full_path
 
     df.with_columns(
         (pl.col(key) % mod).alias(alias)
@@ -58,6 +64,8 @@ def sink_with_partition(df: pl.LazyFrame, root_path: str, key: str, mod=100, pre
         )
     )
 
+    return sorted(list(written_files))
+
 def sink_parquet(
         df: pl.LazyFrame | pl.DataFrame,
         path: str,
@@ -69,18 +77,32 @@ def sink_parquet(
         path is relative, e.g. 'features/train.parquet'
         if partition_args is not None, then path must be a dir
     """
-    full_path = os.path.join(LOCAL_DATA_DIR, path)
-    os.makedirs(os.path.dirname(full_path), exist_ok=True)
-
+    assert path_type(path) == PathType.IS_FILE or partition_args is not None
     df = df.lazy() if isinstance(df, pl.DataFrame) else df
 
-    df.sink_parquet(full_path) if partition_args is None else sink_with_partition(df, full_path, **partition_args)
+    local_path = os.path.join(LOCAL_DATA_DIR, path)
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+
+    dir_out, written_files = None, None
+    if path_type(local_path) == PathType.IS_FILE:
+        df.sink_parquet(local_path)
+        dir_out, written_files = Path(local_path).parent, [Path(local_path).name]
+    else:
+        written_files = sink_with_partition(df, local_path, **partition_args)
+        dir_out = local_path
+
+    logger.debug(f"sink_parquet got {path} as arg and wrote to: {written_files}")
+
     if log_artifact:
-        mlflow.log_artifact(full_path)
+        for f_out in written_files:
+            mlflow.log_artifact(os.path.join(dir_out, f_out))
     if STORAGE_BACKEND == "s3":
-        get_s3_client().upload_file(full_path, S3_BUCKET, f"{S3_DATA_DIR}/{path}")
-        if remove_local:
-            os.remove(full_path)
+        for f_out in written_files:
+            full_path = os.path.join(dir_out, f_out)
+            s3_path = os.path.join(S3_DATA_DIR, path if path_type(path) == PathType.IS_DIR else Path(path).parent, f_out)
+            get_s3_client().upload_file(full_path, S3_BUCKET, s3_path)
+            if remove_local:
+                os.remove(full_path)
 
 def read_parquet(path: str | list[str]) -> pl.DataFrame:
     if isinstance(path, str):
