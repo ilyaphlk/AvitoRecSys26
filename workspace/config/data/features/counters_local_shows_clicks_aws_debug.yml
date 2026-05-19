@@ -6,7 +6,12 @@ aggregate_partitions:
     filename_in: dev/processed/raw_filter_dt/
     do_merge: True
   out_artifacts:
-    filename_out: dev/processed/local_shows_clicks_do_merge/part_080_081.parquet
+    filename_out: dev/processed/local_shows_clicks_do_partition/
+    partition_args:
+      - {part: df, args: {key: user_id}}
+      - {part: [user_id], args: {key: user_id}}
+      - {part: [item_id, user_id], args: {key: user_id}}
+      - {part: [item_id], args: {key: item_id}}
   kwargs:
     cfg:
       eager_execution: False
@@ -17,20 +22,20 @@ aggregate_partitions:
           agg:
             - {alias: events_cnt_by_user_id, col: eid, func: count}
             - {alias: clicks_cnt_by_user_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
-        - group_by: [item_id, user_id]
-          agg:
-            - {alias: events_cnt_by_item_id_user_id, col: eid, func: count}
-            - {alias: clicks_cnt_by_item_id_user_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
-        - group_by: [item_id]
-          agg:
-            - {alias: events_cnt_by_item_id, col: eid, func: count}
-            - {alias: clicks_cnt_by_item_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
+        #- group_by: [item_id, user_id]
+        #  agg:
+        #    - {alias: events_cnt_by_item_id_user_id, col: eid, func: count}
+        #    - {alias: clicks_cnt_by_item_id_user_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
+        #- group_by: [item_id]
+        #  agg:
+        #    - {alias: events_cnt_by_item_id, col: eid, func: count}
+        #    - {alias: clicks_cnt_by_item_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
 
 # make item blacklist:
 
 make_accum_item_id:
   out_artifacts:
-    filename_accum: dev/processed/local_shows_clicks_do_merge/item_blacklist_shows_10_clicks_1.parquet
+    filename_accum: dev/processed/local_shows_clicks_do_partition/item_blacklist_shows_10_clicks_1.parquet
   kwargs:
     schema:
       item_id: UInt32
@@ -40,10 +45,10 @@ make_accum_item_id:
 
 make_item_id_blacklist:
   in_artifacts:
-    filename_in: dev/processed/local_shows_clicks_do_merge/item_id/part_*.parquet
+    filename_in: dev/processed/local_shows_clicks_do_partition/item_id/part_*.parquet
     do_merge: True
   out_artifacts:
-    filename_out: dev/processed/local_shows_clicks_do_merge/item_blacklist_shows_10_clicks_1.parquet
+    filename_out: dev/processed/local_shows_clicks_do_partition/item_blacklist_shows_10_clicks_1.parquet
   kwargs:
     cfg:
       join_back: False
@@ -62,7 +67,7 @@ make_item_id_blacklist:
 
 make_accum_user_id:
   out_artifacts:
-    filename_accum: dev/processed/local_shows_clicks_do_merge/user_blacklist_shows_10_clicks_2.parquet
+    filename_accum: dev/processed/local_shows_clicks_do_partition/user_blacklist_shows_10_clicks_2.parquet
   kwargs:
     schema:
       user_id: UInt32
@@ -71,10 +76,10 @@ make_accum_user_id:
 
 make_user_id_blacklist:
   in_artifacts:
-    filename_in: dev/processed/local_shows_clicks_do_merge/user_id/part_*.parquet
+    filename_in: dev/processed/local_shows_clicks_do_partition/user_id/part_*.parquet
     do_merge: True
   out_artifacts:
-    filename_out: dev/processed/local_shows_clicks_do_merge/user_blacklist_shows_10_clicks_2.parquet
+    filename_out: dev/processed/local_shows_clicks_do_partition/user_blacklist_shows_10_clicks_2.parquet
   kwargs:
     cfg:
       join_back: False
@@ -84,15 +89,18 @@ make_user_id_blacklist:
 
 filter_by_blacklists:
   in_artifacts:
-    filename_in: dev/processed/local_shows_clicks_do_merge/item_id_user_id/
+    filename_in: dev/processed/local_shows_clicks_do_partition/item_id_user_id/
+    do_merge: True
     join_tables:
-    - join_key: item_id
-      name: dev/processed/local_shows_clicks_do_merge/item_blacklist_shows_10_clicks_1.parquet
-      join_type: anti
+    # - join_key: item_id
+    #   name: dev/processed/local_shows_clicks_do_partition/item_blacklist_shows_10_clicks_1.parquet
+    #   join_type: anti
     - join_key: user_id
-      name: dev/processed/local_shows_clicks_do_merge/user_blacklist_shows_10_clicks_2.parquet
+      name: dev/processed/local_shows_clicks_do_partition/user_blacklist_shows_10_clicks_2.parquet
       join_type: anti
   out_artifacts:
-    filename_out: processed/local_shows_clicks_do_merge/item_id_user_id/whitelisted/by_min_limits/
+    filename_out: processed/local_shows_clicks_do_partition/item_id_user_id/whitelisted/by_min_limits/
+    partition_args:
+      - {part: df, key: user_id}
   kwargs:
     eager_execution: False

@@ -47,7 +47,10 @@ class BaseStage:
         """
             write run artifacts to disk (locally)
         """
-        for fp in self.cfg["out_artifacts"].values():
+        write_artifacts_kwargs = ["partition_args"]
+        for section_name, fp in self.cfg["out_artifacts"].items():
+            if section_name in write_artifacts_kwargs:
+                continue
             if os.path.split(fp)[-1] == "":  # check if dir-like
                 fp = os.path.join(fp, "placeholder")
             p = Path(utils.LOCAL_DATA_DIR, fp)

@@ -63,7 +63,7 @@ def make_aggregations(df: pl.LazyFrame, cfg: dict) -> dict[tuple[str], pl.LazyFr
     for agg_block in cfg["features"]["aggregations"]:
         keys = agg_block["group_by"]
         exprs = [make_agg_expr(item, keys) for item in agg_block["agg"]]
-        agg_frames[tuple(keys)] = df.group_by(keys).agg(exprs)
+        agg_frames[tuple(sorted(keys))] = df.group_by(keys).agg(exprs)
 
     return agg_frames
 
@@ -174,7 +174,8 @@ def parse_path_in(path_in) -> tuple[str, list[str]]:
 def assert_paths_type_match(cfg):
     fin, fout = cfg["in_artifacts"]["filename_in"], cfg["out_artifacts"]["filename_out"]
     merge_inputs = cfg["in_artifacts"].get("do_merge", False)
-    partition_outputs = cfg["out_artifacts"].get("do_partition", False)
+    partition_outputs = (cfg["out_artifacts"].get("partition_args", None) is not None)
+    do_partition = partition_outputs is not None
     fin_type, fout_type = utils.path_type(fin), utils.path_type(fout)
 
     
@@ -182,7 +183,7 @@ def assert_paths_type_match(cfg):
     both_dirs = (
         (fin_type == utils.PathType.IS_DIR or fin_type == utils.PathType.IS_GLOB)
         and fout_type == utils.PathType.IS_DIR
-        and not(merge_inputs ^ partition_outputs)
+        and not(merge_inputs ^ do_partition)
     )
     merged_to_file = (
         (fin_type == utils.PathType.IS_DIR or fin_type == utils.PathType.IS_GLOB)
@@ -192,7 +193,7 @@ def assert_paths_type_match(cfg):
     partition_to_dir = (
         (((fin_type == utils.PathType.IS_DIR or fin_type == utils.PathType.IS_GLOB) and merge_inputs) or fin_type == utils.PathType.IS_FILE)
         and fout_type == utils.PathType.IS_DIR
-        and partition_outputs
+        and do_partition
     )
 
     assert both_files or both_dirs or merged_to_file or partition_to_dir, "filename_in/filename_out type mismatch"
@@ -257,16 +258,19 @@ class DataTransformStage(BaseStage):
         super().write_artifacts(res)
         path_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
+        partition_args = self.cfg["out_artifacts"].get("partition_args", None)
+        partition_args = utils.parse_partition_args(partition_args)
 
         _, part_filenames = parse_path_in(path_in)
         dir_out, out_filenames = path_out, part_filenames
         if utils.path_type(path_out) == utils.PathType.IS_FILE:
             dir_out, out_filenames = Path(path_out).parent, [Path(path_out).name]
-            
+  
         for elem, out_filename in zip(res, out_filenames):
             logger.info(f"{'#'*20}\nProcessing {dir_out}/{out_filename}...\n")
             write_path = os.path.join(dir_out, out_filename)
-            utils.sink_parquet(elem["df"], write_path, remove_local=False, log_artifact=True)
+            slice_partition_args = partition_args["df"] if partition_args else None
+            utils.sink_parquet(elem["df"], write_path, remove_local=False, log_artifact=True, partition_args=slice_partition_args)
 
             if "filtered_agg_frames" in elem:
                 # case of join_back: False
@@ -274,7 +278,8 @@ class DataTransformStage(BaseStage):
                     logger.debug(f"processing {join_keys} agg part...")
                     keys_subdir = "_".join(sorted(join_keys))
                     write_path = os.path.join(dir_out, keys_subdir, out_filename)
-                    utils.sink_parquet(df, write_path, remove_local=False, log_artifact=True)
+                    slice_partition_args = partition_args[join_keys] if partition_args else None
+                    utils.sink_parquet(df, write_path, remove_local=False, log_artifact=True, partition_args=partition_args[join_keys] if partition_args else None)
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
@@ -554,8 +559,8 @@ def full_whitelist_pipeline_aws_debug():
         #("make_accum_item", MakeAccumStage(accum_item_cfg, make_empty_df, run_name="make_accum_item")),
         #("blacklist_item", DataTransformStage(blacklist_item_cfg, process_data, run_name="blacklist_item")),
         #("make_accum_user", MakeAccumStage(accum_user_cfg, make_empty_df, run_name="make_accum_user")),
-        ("blacklist_user", DataTransformStage(blacklist_user_cfg, process_data, run_name="blacklist_user")),
-        #("make_whitelist", SequentialStage(whitelist_by_antijoin_cfg, JoinTablesStage, join_tables, run_name="make_whitelist")),
+        # ("blacklist_user", DataTransformStage(blacklist_user_cfg, process_data, run_name="blacklist_user")),
+        # ("make_whitelist", SequentialStage(whitelist_by_antijoin_cfg, JoinTablesStage, join_tables, run_name="make_whitelist")),
     ])
 
     return stages, full_whitelist_pipeline_aws_debug.__name__

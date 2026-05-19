@@ -27,6 +27,11 @@ def get_s3_client():
         _s3_client = boto3.client("s3", region_name=AWS_DEFAULT_REGION)
     return _s3_client
 
+def parse_partition_args(yaml_partition_args=None):
+    def transform_key(part):
+        return tuple(sorted(part)) if isinstance(part, (list, tuple)) else part
+    return {transform_key(elem["part"]): elem["args"] for elem in yaml_partition_args} if yaml_partition_args else None
+
 def sink_with_partition(df: pl.LazyFrame, root_path: str, key: str, mod=100, prefix="part_"):
     """
         df: a dataframe to sink
@@ -36,14 +41,20 @@ def sink_with_partition(df: pl.LazyFrame, root_path: str, key: str, mod=100, pre
         prefix: prefix for each filename
     """
     n_digits = len(str(mod - 1)) + 1
+    alias = "__mod"
+    def fp_provider(fp_args: pl.FileProviderArgs):
+        part_val = fp_args.partition_keys[alias].item()
+        return f"{prefix}{part_val:0{n_digits}d}.parquet"
 
     df.with_columns(
-        (pl.col(key) % mod).alias("_mod")
+        (pl.col(key) % mod).alias(alias)
     ).sink_parquet(
-        pl.PartitionedPath(
+        pl.PartitionBy(
             root_path,
-            pl.PartitionBy("_mod", include_key=False),
-            file_path_provider=lambda part_id, _: f"{prefix}{part_id['_mod']:0{n_digits}d}.parquet"
+            key = alias,
+            include_key=False,
+            #file_path_provider=lambda part_id, _: f"{prefix}{part_id[alias]:0{n_digits}d}.parquet"
+            file_path_provider=fp_provider
         )
     )
 
