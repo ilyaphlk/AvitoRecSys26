@@ -270,8 +270,8 @@ class DataTransformStage(BaseStage):
             dir_out, out_filenames = path_out, [""]
   
         for elem, out_filename in zip(res, out_filenames):
-            logger.info(f"{'#'*20}\nProcessing {dir_out}/{out_filename}...\n")
             write_path = os.path.join(dir_out, out_filename)
+            logger.info(f"{'#'*20}\nProcessing {write_path}...\n")
             slice_partition_args = partition_args["df"] if partition_args else None
             utils.sink_parquet(elem["df"], write_path, remove_local=False, log_artifact=True, partition_args=slice_partition_args)
 
@@ -354,8 +354,8 @@ class JoinTablesStage(BaseStage):
             dir_out, out_filenames = path_out, [""]
             
         for elem, out_filename in zip(res, out_filenames):
-            logger.info(f"{'#'*20}\nProcessing {dir_out}/{out_filename}...\n")
             write_path = os.path.join(dir_out, out_filename)
+            logger.info(f"{'#'*20}\nProcessing {write_path}...\n")
             utils.sink_parquet(elem, write_path, remove_local=False, log_artifact=True)
 
     def parse_kwargs(self):
