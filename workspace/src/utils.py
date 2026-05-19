@@ -41,7 +41,7 @@ def sink_parquet(
 
     df = df.lazy() if isinstance(df, pl.DataFrame) else df
 
-    df.sink_parquet(full_path) if partition_args is None else sink_with_partition(df, full_path, **partition_args)
+    df.sink_parquet(full_path)
     if log_artifact:
         mlflow.log_artifact(full_path)
     if STORAGE_BACKEND == "s3":
