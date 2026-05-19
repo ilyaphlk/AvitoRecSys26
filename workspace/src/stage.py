@@ -21,8 +21,8 @@ class BaseStage:
         self.func = func
         self.run_name = run_name if run_name is not None else self.__class__.__name__
         self.run_name = self.run_name + run_name_suffix if run_name_suffix is not None else self.run_name
-        self.assert_args_in_cfg()
         self.kwargs = self.parse_kwargs()
+        self.assert_args_in_cfg()
         self.status = StageStatus.NOT_STARTED
     
     def assert_args_in_cfg(self):
