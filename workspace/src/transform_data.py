@@ -265,6 +265,9 @@ class DataTransformStage(BaseStage):
         dir_out, out_filenames = path_out, part_filenames
         if utils.path_type(path_out) == utils.PathType.IS_FILE:
             dir_out, out_filenames = Path(path_out).parent, [Path(path_out).name]
+
+        if utils.path_type(path_out) == utils.PathType.IS_DIR and partition_args is not None:
+            dir_out, out_filenames = path_out, [""]
   
         for elem, out_filename in zip(res, out_filenames):
             logger.info(f"{'#'*20}\nProcessing {dir_out}/{out_filename}...\n")
@@ -339,11 +342,16 @@ class JoinTablesStage(BaseStage):
         super().write_artifacts(res)
         path_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
+        partition_args = self.cfg["out_artifacts"].get("partition_args", None)
+        partition_args = utils.parse_partition_args(partition_args)
 
         _, part_filenames = parse_path_in(path_in)
         dir_out, out_filenames = path_out, part_filenames
         if utils.path_type(path_out) == utils.PathType.IS_FILE:
             dir_out, out_filenames = Path(path_out).parent, [Path(path_out).name]
+
+        if utils.path_type(path_out) == utils.PathType.IS_DIR and partition_args is not None:
+            dir_out, out_filenames = path_out, [""]
             
         for elem, out_filename in zip(res, out_filenames):
             logger.info(f"{'#'*20}\nProcessing {dir_out}/{out_filename}...\n")
