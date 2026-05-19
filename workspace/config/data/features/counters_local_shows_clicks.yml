@@ -48,7 +48,6 @@ make_item_id_blacklist_sequential:
       join_back: False
       incremental_accum: True
       eager_execution: True
-      append_keys_to_filename: False
       features:
         aggregations:
         - group_by: ["item_id"]
@@ -81,7 +80,6 @@ make_user_id_blacklist_sequential:
       join_back: False
       incremental_accum: True
       eager_execution: True
-      append_keys_to_filename: False
       filters:
         events_cnt_by_user_id: {"<": 10}
         clicks_cnt_by_user_id: {"<": 2}
