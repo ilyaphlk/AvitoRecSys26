@@ -80,66 +80,49 @@ def transform_date_to_ms(cfg):
     cfg["filters"].pop("date_thr")
 
 def make_filters(cfg):
-    if "filters" not in cfg:
-        return dict()
+    assert "reduce_as" in cfg and cfg["reduce_as"] in ["all", "any"]
+    filters = []
+    if isinstance(cfg["filters"], list):
+        filters = [make_filters(elem) for elem in cfg["filters"]]
+    else:
+        for col_name, val_range in cfg["filters"].items():
+            filters.append(
+                pl.all_horizontal([
+                    make_predicate(pl.col(col_name), val_range_item) for val_range_item in val_range.items()
+                ])
+            )
 
-    if "date_thr" in cfg["filters"]:
-        transform_date_to_ms(cfg)
-
-    filters = dict()
-    for col_name, val_range in cfg["filters"].items():
-        for val_range_item in val_range.items():
-            filters[col_name] = make_predicate(pl.col(col_name), val_range_item)
-    return filters
-
-def apply_filters(df, filter_expressions):
-    return df.filter(*filter_expressions)
-
-def make_valid_filters(df, filters):
-    return {fname: f for fname, f in filters.items() if fname in df.collect_schema().names()}
+    return pl.all_horizontal(filters) if cfg["reduce_as"] == "all" else pl.any_horizontal(filters)
 
 def make_df(df, cfg, df_accum=None):
     overwrite_df_in=cfg.get("overwrite_df_in", False) or cfg.get("incremental_accum", False)  # todo check whether incremental_accum should be here
 
     agg_frames = make_aggregations(df, cfg)
-    filters = make_filters(cfg)
-
-    filters_no_agg_fields = make_valid_filters(df, filters)
-
-    if set(filters.keys()) != set(filters_no_agg_fields.keys()) and not agg_frames:
-        logger.warning("\n#####\nsome filters were not applied, because the required columns are missing\n#####")
-
-    df = df.filter(*filters_no_agg_fields.values())
-
-    filtered_agg_frames = dict()
-    for keys, agg_frame in agg_frames.items():
-        valid_filters = make_valid_filters(agg_frame, filters)
-        agg_frame = agg_frame.filter(*valid_filters.values())
-        filtered_agg_frames[keys] = agg_frame
+    filters = make_filters(cfg["filters"]) if "filters" in cfg else [pl.lit(True)]  # .. else do not filter anything
 
     if cfg.get("eager_execution", False):
-        filtered_agg_frames = {k: v.collect() for k, v in filtered_agg_frames.items()}
+        agg_frames = {k: v.collect() for k, v in agg_frames.items()}
 
     if cfg.get("join_back", True):
-        for keys, agg_frame in filtered_agg_frames.items():
+        for keys, agg_frame in agg_frames.items():
             agg_frame = agg_frame.lazy() if isinstance(agg_frame, pl.DataFrame) else agg_frame
             df = df.join(agg_frame, on=keys, how='semi')
 
-        for keys, agg_frame in filtered_agg_frames.items():
+        for keys, agg_frame in agg_frames.items():
             agg_frame = agg_frame.lazy() if isinstance(agg_frame, pl.DataFrame) else agg_frame
             df = df.join(agg_frame, on=keys, how='inner')
 
-        df = df.filter(*filters.values())
+        df = df.filter(filters)
 
         return {"df": df}
     
     if overwrite_df_in:
-        join_key = next(iter(filtered_agg_frames))
-        return {"df": filtered_agg_frames[join_key]}
+        join_key = next(iter(agg_frames))
+        return {"df": agg_frames[join_key].filter(filters)}
     
-    df = df.filter(*filters.values())
+    df = df.filter(filters)
 
-    return {"df": df, "filtered_agg_frames": filtered_agg_frames}
+    return {"df": df, "agg_frames": agg_frames}
 
 def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
     assert df_accum is None or (cfg.get("incremental_accum", False) and len(frames) == 1)
@@ -275,9 +258,9 @@ class DataTransformStage(BaseStage):
             slice_partition_args = partition_args["df"] if partition_args else None
             utils.sink_parquet(elem["df"], write_path, remove_local=False, log_artifact=True, partition_args=slice_partition_args)
 
-            if "filtered_agg_frames" in elem:
+            if "agg_frames" in elem:
                 # case of join_back: False
-                for join_keys, df in elem["filtered_agg_frames"].items():
+                for join_keys, df in elem["agg_frames"].items():
                     logger.debug(f"processing {join_keys} agg part...")
                     keys_subdir = "_".join(sorted(join_keys))
                     write_path = os.path.join(dir_out, keys_subdir, out_filename)
@@ -574,6 +557,22 @@ def full_whitelist_pipeline_aws_debug():
     return stages, full_whitelist_pipeline_aws_debug.__name__
 
 
+def test_recursive_filters():
+    config_path = "/project/workspace/config/data/features/tree_filters_debug.yml"
+    
+    simple_or_cfg = load_config(config_path)["simple_or"]
+    disj_of_conj_cfg = load_config(config_path)["disj_of_conj"]
+    simple_or_w_aggregates_cfg = load_config(config_path)["simple_or_w_aggregates"]
+
+    stages = OrderedDict([
+        ("simple_or", DataTransformStage(simple_or_cfg, process_data, run_name="simple_or")),
+        ("disj_of_conj", DataTransformStage(disj_of_conj_cfg, process_data, run_name="disj_of_conj")),
+        ("simple_or_w_aggregates", DataTransformStage(simple_or_w_aggregates_cfg, process_data, run_name="simple_or_w_aggregates")),
+    ])
+
+    return stages, test_recursive_filters.__name__
+
+
 def test(func):
     # assert len(sys.argv) == 2, "please provide path to stage yaml config as an argument"
     # preprocess_config_path = sys.argv[1]
@@ -581,7 +580,7 @@ def test(func):
     logger.debug("setting mlflow uri...")
     mlflow.set_tracking_uri("http://localhost:5000")
     logger.debug("setting mlflow exp...")
-    mlflow.set_experiment(experiment_name="whitelist_pipeline")
+    mlflow.set_experiment(experiment_name="debug_filters")
 
     stages, run_name = func()
 
@@ -594,4 +593,4 @@ def test(func):
 
 
 if __name__ == "__main__":
-    test(full_whitelist_pipeline_aws_debug)
+    test(test_recursive_filters)

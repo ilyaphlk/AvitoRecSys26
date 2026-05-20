@@ -1,0 +1,60 @@
+constants:
+  CONTACT_EIDS: [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]
+
+simple_or_w_aggregates:
+  in_artifacts:
+    filename_in: dev/processed/raw_filter_dt/part_080.parquet
+  out_artifacts:
+    filename_out: dev/processed/test_filters/simple_or_w_aggregates/part_080.parquet
+  kwargs:
+    cfg:
+      eager_execution: False
+      join_back: True
+      features:
+        aggregations:
+        - group_by: [user_id]
+          agg:
+            - {alias: events_cnt_by_user_id, col: eid, func: count}
+            - {alias: clicks_cnt_by_user_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
+      
+      filters:  # translates to (pl.col("events_cnt_by_item_id") < 10 or pl.col("clicks_cnt_by_item_id") < 1)
+        reduce_as: any
+        filters:
+          events_cnt_by_user_id: {"<": 10}
+          clicks_cnt_by_user_id: {"<": 1}
+
+simple_or:
+  in_artifacts:
+    filename_in: dev/processed/raw_filter_dt/part_080.parquet
+  out_artifacts:
+    filename_out: dev/processed/test_filters/simple_or/part_080.parquet
+  kwargs:
+    cfg:
+      eager_execution: False
+      join_back: False
+      filters:  # translates to (pl.col("user_id") == 80 or pl.col("timestamp") > 1775347200000)
+        reduce_as: any
+        filters:
+          user_id: {"==": 80}
+          timestamp: {">": 1775347200000}  # april 5th
+
+disj_of_conj:
+  in_artifacts:
+    filename_in: dev/processed/raw_filter_dt/part_080.parquet
+  out_artifacts:
+    filename_out: dev/processed/test_filters/disj_of_conj/part_080.parquet
+  kwargs:
+    cfg:
+      eager_execution: False
+      join_back: False
+      filters:  # translates to (pl.col("user_id") == 80 and pl.col("timestamp") > 1775347200000) or (pl.col("user_id") == 180 and pl.col("timestamp") < 1770000000000)
+        reduce_as: any
+        filters:
+          - reduce_as: all
+            filters:
+              user_id: {"==": 80}
+              timestamp: {">": 1775347200000}  # april 5th
+          - reduce_as: all
+            filters:
+              user_id: {"==": 180}
+              timestamp: {"<": 1770000000000}
