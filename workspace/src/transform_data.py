@@ -346,7 +346,7 @@ class JoinTablesStage(BaseStage):
         for elem, out_filename in zip(res, out_filenames):
             write_path = os.path.join(dir_out, out_filename)
             logger.info(f"{'#'*20}\nProcessing {write_path}...\n")
-            utils.sink_parquet(elem, write_path, remove_local=self.remove_local, log_artifact=self.log_artifacts)
+            utils.sink_parquet(elem, write_path, remove_local=self.remove_local, log_artifact=self.log_artifacts, partition_args=partition_args["df"] if partition_args else None)
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
