@@ -24,6 +24,8 @@ class BaseStage:
         self.kwargs = self.parse_kwargs()
         self.assert_args_in_cfg()
         self.status = StageStatus.NOT_STARTED
+        self.log_artifacts = self.cfg.get("mlflow_log_artifacts", True)
+        self.remove_local = self.cfg.get("remove_local", False)
     
     def assert_args_in_cfg(self):
         """
