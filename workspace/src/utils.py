@@ -211,9 +211,9 @@ def check_submission(df_true_filename, df_pred_filename):
     return calc_metric(df_true, df_pred)
 
 
-def resolve_constants(cfg: dict) -> dict:
+def resolve_constants(cfg: dict, constants: dict = None) -> dict:
     """Replace '$NAME' strings with their value from cfg['constants']."""
-    constants = cfg.get("constants", {})
+    constants = cfg.get("constants", {}) if constants is None else constants
     pattern = r'\$\$(.*?)\$\$'
 
     def replace_with_const(match):
@@ -241,10 +241,15 @@ def resolve_constants(cfg: dict) -> dict:
     return resolve(cfg)
 
 
-def load_config(config_path: str) -> dict:
+def load_config(config_path: str, constants_path: str = None) -> dict:
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
-    return resolve_constants(cfg)
+
+    constants = None
+    if constants_path is not None:
+        with open(constants_path) as f:
+            constants = yaml.safe_load(f)
+    return resolve_constants(cfg, constants)
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)

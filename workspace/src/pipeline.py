@@ -26,7 +26,9 @@ FUNCS_DICT = {
 }
 
 def make_stage_object(stage_dict):
-    cfg = load_config(stage_dict["config_path"])[stage_dict["stage_name"]]
+    cfg_path = stage_dict["config_path"]
+    constants_path = stage_dict.get("constants_path", None)
+    cfg = load_config(cfg_path, constants_path)[stage_dict["stage_name"]]
     stage_class = STAGES_DICT[stage_dict["stage_class"]]
     stage_func = FUNCS_DICT[stage_dict["stage_func"]]
     child_stage_class = STAGES_DICT[stage_dict["child_stage_class"]] if "child_stage_class" in stage_dict else None
