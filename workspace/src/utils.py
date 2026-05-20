@@ -213,7 +213,7 @@ def check_submission(df_true_filename, df_pred_filename):
 
 def resolve_constants(cfg: dict, constants: dict = None) -> dict:
     """Replace '$NAME' strings with their value from cfg['constants']."""
-    constants = cfg.get("constants", {}) if constants is None else constants
+    constants = dict() if constants is None else constants
     pattern = r'\$\$(.*?)\$\$'
 
     def replace_with_const(match):
@@ -241,14 +241,22 @@ def resolve_constants(cfg: dict, constants: dict = None) -> dict:
     return resolve(cfg)
 
 
-def load_config(config_path: str, constants_path: str = None) -> dict:
+def load_config(config_path: str, constants_path: str | list[str] = None) -> dict:
     with open(config_path) as f:
         cfg = yaml.safe_load(f)
 
-    constants = None
-    if constants_path is not None:
-        with open(constants_path) as f:
-            constants = yaml.safe_load(f)
+    constants = cfg.get("constants", {})
+    if constants_path is None:
+        return resolve_constants(cfg, constants)    
+
+    if isinstance(constants_path, str):
+        constants_path = [constants_path]
+
+    for c in constants_path:
+        with open(c) as f:
+            constants_part = yaml.safe_load(f)
+            constants.update(constants_part)
+
     return resolve_constants(cfg, constants)
 
 def parse_args(argv=None):
