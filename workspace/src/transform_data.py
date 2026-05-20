@@ -55,15 +55,30 @@ def make_agg_expr(agg_item: dict, keys: list[str]) -> pl.Expr:
 
     return AGG_FUNCS[func](expr, val_range=condition).alias(alias)
 
+def parse_filters_cfg(cfg):
+    if "filters" not in cfg:
+        return {"pre": [pl.lit(True)], "post": [pl.lit(True)]}
+
+    res = dict()
+    res["pre"] = make_filters(cfg["filters"]["pre"]) if "pre" in cfg["filters"] else [pl.lit(True)]
+    res["post"] = make_filters(cfg["filters"]["post"]) if "post" in cfg["filters"] else [pl.lit(True)]
+    
+    return res
+
 def make_aggregations(df: pl.LazyFrame, cfg: dict) -> dict[tuple[str], pl.LazyFrame]:
     if "features" not in cfg or "aggregations" not in cfg["features"]:
         return dict()
 
     agg_frames = dict()
     for agg_block in cfg["features"]["aggregations"]:
+        filters_block = parse_filters_cfg(agg_block)
         keys = agg_block["group_by"]
         exprs = [make_agg_expr(item, keys) for item in agg_block["agg"]]
-        agg_frames[tuple(sorted(keys))] = df.group_by(keys).agg(exprs)
+        agg_frames[tuple(sorted(keys))] = (
+            df.filter(filters_block["pre"])
+            .group_by(keys).agg(exprs)
+            .filter(filters_block["post"])
+        )
 
     return agg_frames
 
@@ -96,12 +111,19 @@ def make_filters(cfg):
 
 def make_df(df, cfg, df_accum=None):
     overwrite_df_in=cfg.get("overwrite_df_in", False) or cfg.get("incremental_accum", False)  # todo check whether incremental_accum should be here
+    assert not(overwrite_df_in and cfg.get("join_back", True)), "either overwrite df with the agg frame or join frames to original"
 
+    full_df_filters = parse_filters_cfg(cfg)
+    df = df.filter(full_df_filters["pre"])
+    
     agg_frames = make_aggregations(df, cfg)
-    filters = make_filters(cfg["filters"]) if "filters" in cfg else [pl.lit(True)]  # .. else do not filter anything
 
     if cfg.get("eager_execution", False):
         agg_frames = {k: v.collect() for k, v in agg_frames.items()}
+
+    if overwrite_df_in:  # return (the only) agg frame as main df
+        join_key = next(iter(agg_frames))
+        return {"df": agg_frames[join_key].filter(full_df_filters["post"])}
 
     if cfg.get("join_back", True):
         for keys, agg_frame in agg_frames.items():
@@ -112,17 +134,9 @@ def make_df(df, cfg, df_accum=None):
             agg_frame = agg_frame.lazy() if isinstance(agg_frame, pl.DataFrame) else agg_frame
             df = df.join(agg_frame, on=keys, how='inner')
 
-        df = df.filter(filters)
+        return {"df": df.filter(full_df_filters["post"])}
 
-        return {"df": df}
-    
-    if overwrite_df_in:
-        join_key = next(iter(agg_frames))
-        return {"df": agg_frames[join_key].filter(filters)}
-    
-    df = df.filter(filters)
-
-    return {"df": df, "agg_frames": agg_frames}
+    return {"df": df.filter(full_df_filters["post"]), "agg_frames": agg_frames}
 
 def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
     assert df_accum is None or (cfg.get("incremental_accum", False) and len(frames) == 1)
