@@ -136,6 +136,9 @@ def make_df(df, cfg, df_accum=None):
 
         return {"df": df.filter(full_df_filters["post"])}
 
+    if "filters" not in cfg:  # means that no changes made to input df
+        return {"agg_frames": agg_frames}
+
     return {"df": df.filter(full_df_filters["post"]), "agg_frames": agg_frames}
 
 def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
@@ -262,8 +265,10 @@ class DataTransformStage(BaseStage):
         for elem, out_filename in zip(res, out_filenames):
             write_path = os.path.join(dir_out, out_filename)
             logger.info(f"{'#'*20}\nProcessing {write_path}...\n")
-            slice_partition_args = partition_args["df"] if partition_args else None
-            utils.sink_parquet(elem["df"], write_path, remove_local=self.remove_local, log_artifact=self.log_artifacts, partition_args=slice_partition_args)
+
+            if "df" in elem:  # otherwise means no changes made to df -> skip writing it
+                slice_partition_args = partition_args["df"] if partition_args else None
+                utils.sink_parquet(elem["df"], write_path, remove_local=self.remove_local, log_artifact=self.log_artifacts, partition_args=slice_partition_args)
 
             if "agg_frames" in elem:
                 # case of join_back: False
