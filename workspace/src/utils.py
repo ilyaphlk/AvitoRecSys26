@@ -11,6 +11,7 @@ from enum import Enum
 import glob
 import fnmatch
 from typing import Any
+import re
 
 
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local")  # "local" or "s3"
@@ -213,13 +214,24 @@ def check_submission(df_true_filename, df_pred_filename):
 def resolve_constants(cfg: dict) -> dict:
     """Replace '$NAME' strings with their value from cfg['constants']."""
     constants = cfg.get("constants", {})
+    pattern = r'\$\$(.*?)\$\$'
+
+    def replace_with_const(match):
+        const_name = match.group(1)
+        if const_name not in constants:
+            raise ValueError(f"Undefined constant '{const_name}'")
+        return str(constants[const_name])
 
     def resolve(obj):
-        if isinstance(obj, str) and obj.startswith("$"):
+        if isinstance(obj, str) and obj.startswith("$") and not re.findall(pattern, obj):
             key = obj[1:]
             if key not in constants:
                 raise ValueError(f"Undefined constant '{key}'")
             return constants[key]
+
+        if isinstance(obj, str):
+            return re.sub(pattern, replace_with_const, obj)
+
         if isinstance(obj, dict):
             return {k: resolve(v) for k, v in obj.items()}
         if isinstance(obj, list):
