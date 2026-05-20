@@ -132,13 +132,6 @@ def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
 
     return [make_df(elem, cfg) for elem in frames]
 
-# def parse_path_in(path_in):
-#     if utils.is_dirlike(path_in):
-#         return path_in, lambda s: s.startswith("part_"), False
-
-#     is_glob_pattern = ("*" in path_in or "[" in path_in or "]" in path_in)
-
-#     return str(Path(path_in).parent), lambda s: s == str(Path(path_in).name), is_glob_pattern  # todo lambda doesn't work for glob
 
 def parse_path_in(path_in) -> tuple[str, list[str]]:
     """
