@@ -263,7 +263,7 @@ class DataTransformStage(BaseStage):
             write_path = os.path.join(dir_out, out_filename)
             logger.info(f"{'#'*20}\nProcessing {write_path}...\n")
             slice_partition_args = partition_args["df"] if partition_args else None
-            utils.sink_parquet(elem["df"], write_path, remove_local=False, log_artifact=True, partition_args=slice_partition_args)
+            utils.sink_parquet(elem["df"], write_path, remove_local=self.remove_local, log_artifact=self.log_artifacts, partition_args=slice_partition_args)
 
             if "agg_frames" in elem:
                 # case of join_back: False
@@ -272,7 +272,7 @@ class DataTransformStage(BaseStage):
                     keys_subdir = "_".join(sorted(join_keys))
                     write_path = os.path.join(dir_out, keys_subdir, out_filename)
                     slice_partition_args = partition_args[join_keys] if partition_args else None
-                    utils.sink_parquet(df, write_path, remove_local=False, log_artifact=True, partition_args=partition_args[join_keys] if partition_args else None)
+                    utils.sink_parquet(df, write_path, remove_local=self.remove_local, log_artifact=self.log_artifacts, partition_args=partition_args[join_keys] if partition_args else None)
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
@@ -346,7 +346,7 @@ class JoinTablesStage(BaseStage):
         for elem, out_filename in zip(res, out_filenames):
             write_path = os.path.join(dir_out, out_filename)
             logger.info(f"{'#'*20}\nProcessing {write_path}...\n")
-            utils.sink_parquet(elem, write_path, remove_local=False, log_artifact=True)
+            utils.sink_parquet(elem, write_path, remove_local=self.remove_local, log_artifact=self.log_artifacts)
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
@@ -426,7 +426,7 @@ class MakeAccumStage(BaseStage):
     def write_artifacts(self, run_result):
         super().write_artifacts(run_result)
         path_out = self.cfg["out_artifacts"]["filename_accum"]
-        utils.sink_parquet(run_result, path_out, remove_local=False, log_artifact=True)
+        utils.sink_parquet(run_result, path_out, remove_local=self.remove_local, log_artifact=self.log_artifacts)
 
 def test_aggregate_combine():
     preprocess_config_path = "/project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml"
@@ -570,11 +570,13 @@ def test_recursive_filters():
     simple_or_cfg = load_config(config_path)["simple_or"]
     disj_of_conj_cfg = load_config(config_path)["disj_of_conj"]
     simple_or_w_aggregates_cfg = load_config(config_path)["simple_or_w_aggregates"]
+    aggregates_filter_pre_post_cfg = load_config(config_path)["aggregates_filter_pre_post"]
 
     stages = OrderedDict([
-        ("simple_or", DataTransformStage(simple_or_cfg, process_data, run_name="simple_or")),
-        ("disj_of_conj", DataTransformStage(disj_of_conj_cfg, process_data, run_name="disj_of_conj")),
-        ("simple_or_w_aggregates", DataTransformStage(simple_or_w_aggregates_cfg, process_data, run_name="simple_or_w_aggregates")),
+        # ("simple_or", DataTransformStage(simple_or_cfg, process_data, run_name="simple_or")),
+        # ("disj_of_conj", DataTransformStage(disj_of_conj_cfg, process_data, run_name="disj_of_conj")),
+        # ("simple_or_w_aggregates", DataTransformStage(simple_or_w_aggregates_cfg, process_data, run_name="simple_or_w_aggregates")),
+        ("aggregates_filter_pre_post", DataTransformStage(aggregates_filter_pre_post_cfg, process_data, run_name="aggregates_filter_pre_post")),
     ])
 
     return stages, test_recursive_filters.__name__
