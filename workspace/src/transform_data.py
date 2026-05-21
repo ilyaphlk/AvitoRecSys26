@@ -167,9 +167,16 @@ def parse_path_in(path_in) -> tuple[str, list[str]]:
 def assert_paths_type_match(cfg):
     fin, fout = cfg["in_artifacts"]["filename_in"], cfg["out_artifacts"]["filename_out"]
     merge_inputs = cfg["in_artifacts"].get("do_merge", False)
+
+    # todo: implement writing to multiple directories
+    assert isinstance(fout, str)
+
     partition_outputs = (cfg["out_artifacts"].get("partition_args", None) is not None)
     do_partition = partition_outputs is not None
-    fin_type, fout_type = utils.path_type(fin), utils.path_type(fout)
+
+    # treat fin as dir in case of multidir input for asserts' purpose
+    fin_type = utils.PathType.IS_DIR if isinstance(fin, list) else utils.path_type(fin)
+    fout_type = utils.path_type(fout)
 
     
     both_files = (fin_type == utils.PathType.IS_FILE and fout_type == utils.PathType.IS_FILE)
@@ -225,22 +232,26 @@ class DataTransformStage(BaseStage):
         )
 
     def load_artifacts(self):
-        path_in = self.cfg["in_artifacts"]["filename_in"]
+        paths_in = self.cfg["in_artifacts"]["filename_in"]
         df_accum = None
         if "filename_accum" in self.cfg["in_artifacts"]:
             filename_accum = self.cfg["in_artifacts"]["filename_accum"]
             df_accum = utils.scan_parquet(filename_accum)
         res = {"df_accum": df_accum}
 
-        dir_in, part_filenames = parse_path_in(path_in)
+        if isinstance(paths_in, str):
+            paths_in = [paths_in]
+
         parts = []
-        for part_filename in part_filenames:
-            logger.debug(f"scanning {part_filename} from {dir_in}...")
-            read_path = os.path.join(dir_in, part_filename)
-            if self.cfg["in_artifacts"].get("do_merge", False):
-                parts.append(read_path)
-            else:
-                parts.append(utils.scan_parquet(read_path))
+        for path_in in paths_in:
+            dir_in, part_filenames = parse_path_in(path_in)
+            for part_filename in part_filenames:
+                logger.debug(f"scanning {part_filename} from {dir_in}...")
+                read_path = os.path.join(dir_in, part_filename)
+                if self.cfg["in_artifacts"].get("do_merge", False):
+                    parts.append(read_path)
+                else:
+                    parts.append(utils.scan_parquet(read_path))
         
         frames = [utils.scan_parquet(parts)] if self.cfg["in_artifacts"].get("do_merge", False) else parts
 
@@ -249,18 +260,29 @@ class DataTransformStage(BaseStage):
     
     def write_artifacts(self, res: list[pl.LazyFrame | pl.DataFrame] | list[dict[tuple, pl.LazyFrame | pl.DataFrame]]):
         super().write_artifacts(res)
-        path_in = self.cfg["in_artifacts"]["filename_in"]
+        paths_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
         partition_args = self.cfg["out_artifacts"].get("partition_args", None)
         partition_args = utils.parse_partition_args(partition_args)
 
-        _, part_filenames = parse_path_in(path_in)
+        if isinstance(paths_in, str):
+            paths_in = [paths_in]
+
+        part_filenames = []
+        for path_in in paths_in:
+            _, cur_part_filenames = parse_path_in(path_in)
+            part_filenames.extend(cur_part_filenames)
+
         dir_out, out_filenames = path_out, part_filenames
         if utils.path_type(path_out) == utils.PathType.IS_FILE:
             dir_out, out_filenames = Path(path_out).parent, [Path(path_out).name]
 
         if utils.path_type(path_out) == utils.PathType.IS_DIR and partition_args is not None:
             dir_out, out_filenames = path_out, [""]
+
+        # check case where paths_in is a list
+        # todo implement writing to multiple directories
+        assert len(out_filenames) == len(set(out_filenames)), "duplicate filenames are not allowed when using multidir input"
   
         for elem, out_filename in zip(res, out_filenames):
             write_path = os.path.join(dir_out, out_filename)
