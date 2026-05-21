@@ -94,16 +94,24 @@ def train(
     ram_report()
 
     logger.info("start fit model...")
+
+    loss_history = []
+    def store_loss(output_list):
+        def inner(iteration, elapsed, loss):
+            output_list.append(loss)
+        return inner
+
     model = implicit.als.AlternatingLeastSquares(
         iterations=steps,
         factors=hidden_dim,
         random_state=random_state,
         calculate_training_loss=calculate_training_loss
     )
+    model.fit_callback = store_loss(loss_history)
     model.fit(sparse_matrix, )
     logger.info("finish fit model")
     if calculate_training_loss and steps > 0:
-        for i, loss in enumerate(model.training_loss):
+        for i, loss in enumerate(loss_history):
             mlflow.log_metric("training_loss", loss, step=i)
 
     user4pred_als_idx = np.array([user_id_to_index[i] for i in user_to_pred if i in user_id_to_index])
