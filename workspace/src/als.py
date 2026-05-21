@@ -259,7 +259,7 @@ def inference(
 
     return df_pred
 
-def collect_train_part(fp):
+def collect_train_part_from_joined(fp):
     logger.info(f"collecting part {fp}...")
     return (
         pl.scan_parquet(fp)
@@ -283,7 +283,7 @@ def make_train(train_events_path, eval_users_events_path):
     full_paths = [eval_users_events_path] + sorted(full_paths)
 
     logger.info("concatenating collected parts..")
-    return pl.concat([collect_train_part(fp) for fp in full_paths])
+    return pl.concat([collect_train_part_from_joined(fp) for fp in full_paths])
 
 
 class ALSPreprocessStage(BaseStage):
