@@ -14,6 +14,7 @@ STAGES_DICT = {
     "MakeAccumStage": transform_data.MakeAccumStage,
     "SequentialStage": transform_data.SequentialStage,
     "PrepareLocalEvalStage": prepare_local_eval.PrepareLocalEvalStage,
+    "JoinTablesStage": transform_data.JoinTablesStage,
 }
 
 FUNCS_DICT = {
@@ -22,7 +23,8 @@ FUNCS_DICT = {
     "als_inference": als.inference,
     "process_data": transform_data.process_data,
     "make_empty_df": transform_data.make_empty_df,
-    "prepare_local_eval": prepare_local_eval.prepare_local_eval
+    "prepare_local_eval": prepare_local_eval.prepare_local_eval,
+    "join_tables": transform_data.join_tables,
 }
 
 def make_stage_object(stage_dict):
@@ -39,7 +41,7 @@ def make_stage_object(stage_dict):
 def run_pipeline():
     assert len(sys.argv) == 2, "please provide a path to yaml config with pipeline args"
     pipeline_config_path = sys.argv[1]
-    # pipeline_config_path = "/project/workspace/config/pipeline/make_local_eval.yml"
+    # pipeline_config_path = "/project/workspace/config/pipeline/filter_data_by_blacklists/blacklist_min_users_min_items_debug.yml"
 
     pipeline_cfg = load_config(pipeline_config_path)["pipeline"]
 
