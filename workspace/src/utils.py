@@ -12,6 +12,11 @@ import glob
 import fnmatch
 from typing import Any
 import re
+import numpy as np
+import scipy.sparse as sparse
+import json
+import torch
+from implicit.als import AlternatingLeastSquares
 
 
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local")  # "local" or "s3"
@@ -148,6 +153,80 @@ def read_csv(path: str) -> pl.DataFrame:
                                )
     else:
         return pl.read_csv(os.path.join(LOCAL_DATA_DIR, path))
+
+def als_save(obj: Any, path: str):
+    """
+        helper function to remove the mandatory .npz file extension upon saving the file.
+    """
+    obj.save(path)
+    os.rename(f"{path}.npz", path)
+
+def als_load(path):
+    """
+        add .npz extension to the .als model filename so that the ALS loader does not freak out
+    """
+    pnpz = f"{path}.npz"
+    os.rename(path, pnpz)
+    model = AlternatingLeastSquares().load(pnpz)
+    os.rename(pnpz, path)
+    return model
+
+def save_artifact(obj: Any, path: str, remove_local: bool = True, log_artifact: bool = False):
+    """
+    path is relative, e.g. 'models/rec.keras' or 'data/matrix.npz'
+    Dispatches serialization by file extension, then uploads to S3 if configured.
+    """
+    local_path = os.path.join(LOCAL_DATA_DIR, path)
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+
+    ext = Path(path).suffix.lower()
+    _WRITERS = {
+        ".npy":   lambda o, p: np.save(p, o),
+        ".npz":   lambda o, p: sparse.save_npz(p, o),
+        ".json":  lambda o, p: Path(p).write_text(json.dumps(o)),
+        ".pt":    lambda o, p: torch.save(o, p),
+        ".als":   lambda o, p: als_save(o, p)
+    }
+
+    writer = _WRITERS.get(ext)
+    if writer is None:
+        raise ValueError(f"No writer registered for extension '{ext}'")
+    writer(obj, local_path)
+
+    if log_artifact:
+        mlflow.log_artifact(local_path)
+
+    if STORAGE_BACKEND == "s3":
+        s3_path = os.path.join(S3_DATA_DIR, path)
+        get_s3_client().upload_file(local_path, S3_BUCKET, s3_path)
+        if remove_local:
+            os.remove(local_path)
+
+def load_artifact(path: str) -> Any:
+    """
+    path is relative, e.g. 'models/rec.keras' or 'data/matrix.npz'
+    If S3 backend, downloads first, then deserializes by extension.
+    """
+    local_path = os.path.join(LOCAL_DATA_DIR, path)
+
+    if STORAGE_BACKEND == "s3":
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        s3_path = os.path.join(S3_DATA_DIR, path)
+        get_s3_client().download_file(S3_BUCKET, s3_path, local_path)
+
+    ext = Path(path).suffix.lower()
+    _READERS = {
+        ".npy":   lambda p: np.load(p, allow_pickle=False),
+        ".npz":   lambda p: sparse.load_npz(p),
+        ".json":  lambda p: json.loads(Path(p).read_text()),
+        ".pt":    lambda p: torch.load(p, weights_only=True),
+        ".als":   lambda p: als_load(p)
+    }
+
+    reader = _READERS.get(ext)
+    if reader is None:
+        raise ValueError(f"No reader registered for extension '{ext}'")
+    return reader(local_path)
 
 def is_dirlike(path):
     return os.path.split(path)[-1] == ""
