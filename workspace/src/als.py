@@ -16,6 +16,7 @@ from typing import Any, Dict
 from stage import BaseStage
 import json
 import mlflow
+import utils
 
 
 def ram_report():
@@ -132,7 +133,7 @@ def inference(
         fallback_strategy=None,
         popular_top=None,
         resume_from_run_id=None,
-        artifacts_dir="/project/data/artifacts",
+        artifacts_dir="mlflow/artifacts",
     ):
     if resume_from_run_id is not None:
         logger.info(f"inference will be resumed from run_id {resume_from_run_id}")
@@ -156,7 +157,7 @@ def inference(
         mlflow.log_param("users_pred_by_fallback_cnt", len(user4pred_fallback))
         mlflow.log_param("users_pred_by_fallback_pct", len(user4pred_fallback) / (len(user4pred_als_idx) + len(user4pred_fallback)))
 
-    batches_dir = os.path.join(artifacts_dir, resume_from_run_id, "inference_batches")
+    batches_dir = os.path.join("/project", artifacts_dir, resume_from_run_id, "inference_batches")  # todo rework for aws
     Path(batches_dir).mkdir(exist_ok=True, parents=True)
     client = mlflow.MlflowClient()
 
@@ -262,7 +263,7 @@ def inference(
 def collect_train_part_from_joined(fp):
     logger.info(f"collecting part {fp}...")
     return (
-        pl.scan_parquet(fp)
+        utils.scan_parquet(fp)
         .select(
             pl.col("user_id"),
             pl.col("item_id"),
@@ -305,7 +306,12 @@ class ALSPreprocessStage(BaseStage):
 
     def write_artifacts(self, run_result):
         super().write_artifacts(run_result)
-        run_result.write_parquet(self.cfg["out_artifacts"]["preprocessed_df_path"])
+        utils.sink_parquet(
+            run_result,
+            self.cfg["out_artifacts"]["preprocessed_df_path"],
+            remove_local=self.remove_local,
+            log_artifact=self.log_artifacts
+        )
 
 
 class ALSTrainStage(BaseStage):
@@ -328,8 +334,8 @@ class ALSTrainStage(BaseStage):
 
     def load_artifacts(self):
         return {
-            "df_train": pl.read_parquet(self.cfg["in_artifacts"]["train_data"]),
-            "user_to_pred": pl.read_csv(self.cfg["in_artifacts"]["eval_users"]),
+            "df_train": utils.read_parquet(self.cfg["in_artifacts"]["train_data"]),
+            "user_to_pred": utils.read_csv(self.cfg["in_artifacts"]["eval_users"]),
         }
 
     def write_artifacts(self, run_result):
@@ -343,7 +349,12 @@ class ALSTrainStage(BaseStage):
             json.dump({int(k): int(v) for k, v in run_result.user_id_to_index.items()}, f)
         
         if self.cfg["kwargs"].get("make_popular_top", False):
-            run_result.popular_top.write_parquet(self.cfg["out_artifacts"]["popular_top"])
+            utils.sink_parquet(
+                run_result.popular_top,
+                self.cfg["out_artifacts"]["popular_top"],
+                remove_local=self.remove_local,
+                log_artifact=self.log_artifacts
+            )
         
         if self.cfg["kwargs"].get("make_user_matrix", False):
             sparse.save_npz(self.cfg["out_artifacts"]["user_matrix"], run_result.user_matrix)
@@ -367,12 +378,12 @@ class ALSInferenceStage(BaseStage):
         in_artifacts = self.cfg["in_artifacts"]
         with open(in_artifacts["item_id_to_index"]) as f_i2idx, open(in_artifacts["user_id_to_index"]) as f_u2idx:
             return {
-                "user_to_pred": pl.read_csv(in_artifacts["eval_users"]),
+                "user_to_pred": utils.read_csv(in_artifacts["eval_users"]),
                 "model": implicit.als.AlternatingLeastSquares().load(in_artifacts["model"]),
                 "item_id_to_index": json.load(f_i2idx, object_hook=lambda d: {int(k): v for k, v in d.items()}),
                 "user_id_to_index": json.load(f_u2idx, object_hook=lambda d: {int(k): v for k, v in d.items()}),
                 "user_matrix": sparse.load_npz(in_artifacts["user_matrix"]) if "user_matrix" in in_artifacts else None,
-                "popular_top": pl.read_parquet(in_artifacts["popular_top"]) if "popular_top" in in_artifacts else None,
+                "popular_top": utils.read_parquet(in_artifacts["popular_top"]) if "popular_top" in in_artifacts else None,
             }
 
     def parse_kwargs(self):
@@ -380,10 +391,12 @@ class ALSInferenceStage(BaseStage):
     
     def write_artifacts(self, run_result):
         super().write_artifacts(run_result)
-        run_result.select(
-            pl.col("user_id"),
-            pl.col("item_id")
-        ).write_csv(self.cfg["out_artifacts"]["submission"])
+        utils.write_csv(
+            run_result.select(pl.col("user_id"), pl.col("item_id")),
+            self.cfg["out_artifacts"]["submission"],
+            remove_local=self.remove_local,
+            log_artifact=self.log_artifacts
+        )
 
 
 
