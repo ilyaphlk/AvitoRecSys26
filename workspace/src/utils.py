@@ -254,7 +254,7 @@ def load_config(config_path: str, constants_path: str | list[str] = None) -> dic
 
     for c in constants_path:
         with open(c) as f:
-            constants_part = yaml.safe_load(f)
+            constants_part = yaml.safe_load(f)["constants"]
             constants.update(constants_part)
 
     return resolve_constants(cfg, constants)
