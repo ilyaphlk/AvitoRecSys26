@@ -5,6 +5,7 @@ import sys
 from utils import load_config
 import mlflow
 from loguru import logger
+import os
 
 STAGES_DICT = {
     "ALSPreprocessStage": als.ALSPreprocessStage,
@@ -71,7 +72,7 @@ def run_pipeline():
         )
     
     logger.debug("setting mlflow uri...")
-    mlflow.set_tracking_uri("http://localhost:5000")
+    mlflow.set_tracking_uri(f"http://localhost:{os.getenv('MLFLOW_PORT', '5000')}")
     logger.debug("setting mlflow exp...")
     mlflow.set_experiment(experiment_name=experiment_name)
 
