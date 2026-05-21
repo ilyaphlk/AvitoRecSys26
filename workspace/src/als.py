@@ -68,8 +68,8 @@ def train(
     logger.info("made rows & cols")
 
     values = (
-        show_weight * df_train["cnt_shows_by_user_id_item_id"]
-        + click_weight * df_train["cnt_clicks_by_user_id_item_id"]
+        show_weight * df_train["events_cnt_by_item_id_user_id"]
+        + click_weight * df_train["clicks_cnt_by_item_id_user_id"]
     ).cast(pl.Float32).to_numpy()
 
     popular_top = None
@@ -267,11 +267,11 @@ def collect_train_part_from_joined(fp):
         .select(
             pl.col("user_id"),
             pl.col("item_id"),
-            pl.col("cnt_shows_by_user_id_item_id"),
-            pl.col("cnt_clicks_by_user_id_item_id")
+            pl.col("events_cnt_by_item_id_user_id"),
+            pl.col("clicks_cnt_by_item_id_user_id")
         )
         .group_by(["user_id", "item_id"])
-        .agg(pl.col("cnt_shows_by_user_id_item_id").first(), pl.col("cnt_clicks_by_user_id_item_id").first()).collect()
+        .agg(pl.col("events_cnt_by_item_id_user_id").first(), pl.col("clicks_cnt_by_item_id_user_id").first()).collect()
     )
 
 def make_train(train_events_path, eval_users_events_path):
