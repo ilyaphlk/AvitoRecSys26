@@ -333,6 +333,7 @@ class ALSTrainStage(BaseStage):
         assert "hidden_dim" in self.cfg["kwargs"]
                     
         assert "out_artifacts" in self.cfg
+        assert "artifacts_dir" in self.cfg["out_artifacts"]
         assert "model" in self.cfg["out_artifacts"]
         assert "item_id_to_index" in self.cfg["out_artifacts"]
         assert "user_id_to_index" in self.cfg["out_artifacts"]
@@ -348,24 +349,25 @@ class ALSTrainStage(BaseStage):
 
     def write_artifacts(self, run_result):
         super().write_artifacts(run_result)
+        artifacts_dir = self.cfg["out_artifacts"]["artifacts_dir"]
 
-        run_result.model.save(self.cfg["out_artifacts"]["model"])
+        run_result.model.save(os.path.join(utils.LOCAL_DATA_DIR, artifacts_dir, self.cfg["out_artifacts"]["model"]))
 
-        with open(self.cfg["out_artifacts"]["item_id_to_index"], "w") as f:
+        with open(os.path.join(utils.LOCAL_DATA_DIR, artifacts_dir, self.cfg["out_artifacts"]["item_id_to_index"]), "w") as f:
             json.dump({int(k): int(v) for k, v in run_result.item_id_to_index.items()}, f)
-        with open(self.cfg["out_artifacts"]["user_id_to_index"], "w") as f:
+        with open(os.path.join(utils.LOCAL_DATA_DIR, artifacts_dir, self.cfg["out_artifacts"]["user_id_to_index"]), "w") as f:
             json.dump({int(k): int(v) for k, v in run_result.user_id_to_index.items()}, f)
         
         if self.cfg["kwargs"].get("make_popular_top", False):
             utils.sink_parquet(
                 run_result.popular_top,
-                self.cfg["out_artifacts"]["popular_top"],
+                os.path.join(artifacts_dir, self.cfg["out_artifacts"]["popular_top"]),
                 remove_local=self.remove_local,
                 log_artifact=self.log_artifacts
             )
         
         if self.cfg["kwargs"].get("make_user_matrix", False):
-            sparse.save_npz(self.cfg["out_artifacts"]["user_matrix"], run_result.user_matrix)
+            sparse.save_npz(os.path.join(utils.LOCAL_DATA_DIR, artifacts_dir, self.cfg["out_artifacts"]["user_matrix"]), run_result.user_matrix)
 
 
 class ALSInferenceStage(BaseStage):
@@ -384,14 +386,15 @@ class ALSInferenceStage(BaseStage):
 
     def load_artifacts(self):
         in_artifacts = self.cfg["in_artifacts"]
-        with open(in_artifacts["item_id_to_index"]) as f_i2idx, open(in_artifacts["user_id_to_index"]) as f_u2idx:
+        artifacts_dir = self.cfg["in_artifacts"]["artifacts_dir"]
+        with open(os.path.join(utils.LOCAL_DATA_DIR, artifacts_dir, in_artifacts["item_id_to_index"])) as f_i2idx, open(os.path.join(utils.LOCAL_DATA_DIR, artifacts_dir, in_artifacts["user_id_to_index"])) as f_u2idx:
             return {
-                "user_to_pred": utils.read_csv(in_artifacts["eval_users"]),
-                "model": implicit.als.AlternatingLeastSquares().load(in_artifacts["model"]),
+                "user_to_pred": utils.read_csv(os.path.join(in_artifacts["eval_users"])),
+                "model": implicit.als.AlternatingLeastSquares().load(os.path.join(utils.LOCAL_DATA_DIR, artifacts_dir, in_artifacts["model"])),
                 "item_id_to_index": json.load(f_i2idx, object_hook=lambda d: {int(k): v for k, v in d.items()}),
                 "user_id_to_index": json.load(f_u2idx, object_hook=lambda d: {int(k): v for k, v in d.items()}),
-                "user_matrix": sparse.load_npz(in_artifacts["user_matrix"]) if "user_matrix" in in_artifacts else None,
-                "popular_top": utils.read_parquet(in_artifacts["popular_top"]) if "popular_top" in in_artifacts else None,
+                "user_matrix": sparse.load_npz(os.path.join(utils.LOCAL_DATA_DIR, artifacts_dir, in_artifacts["user_matrix"])) if "user_matrix" in in_artifacts else None,
+                "popular_top": utils.read_parquet(os.path.join(artifacts_dir, in_artifacts["popular_top"])) if "popular_top" in in_artifacts else None,
             }
 
     def parse_kwargs(self):

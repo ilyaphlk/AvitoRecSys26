@@ -1,0 +1,19 @@
+pipeline:
+  experiment_name: debug_als_exp
+  run_name: debug_als_run
+  stages:
+    - stage_name: training
+      config_path: /project/workspace/config/training/als/debug.yml
+      stage_class: ALSTrainStage
+      stage_func: als_train
+      constants_path:
+        - /project/workspace/config/data/constants/min_item_shows_clicks.yml
+        - /project/workspace/config/data/constants/min_user_shows_clicks.yml
+
+    - stage_name: inference
+      config_path: /project/workspace/config/inference/als/debug.yml
+      stage_class: ALSInferenceStage
+      stage_func: als_inference
+      constants_path:
+        - /project/workspace/config/data/constants/min_item_shows_clicks.yml
+        - /project/workspace/config/data/constants/min_user_shows_clicks.yml

@@ -1,0 +1,26 @@
+constants:
+  TRAIN_SUBFOLD: no_eval_users
+  EVAL_SUBFOLD: local_events
+  # MIN_EVENTS_ITEM_ID: 10
+  # MIN_CLICKS_ITEM_ID: 1
+  # MIN_EVENTS_USER_ID: 10
+  # MIN_CLICKS_USER_ID: 2
+
+inference:
+  in_artifacts:
+    eval_users: dev/raw/eval/users/part_000.csv
+    artifacts_dir: dev/artifacts/als/IE_$$MIN_EVENTS_ITEM_ID$$_IC_$$MIN_CLICKS_ITEM_ID$$_UE_$$MIN_EVENTS_USER_ID$$_UC_$$MIN_CLICKS_USER_ID$$/
+    model: als_model.npz
+    item_id_to_index: item_id_to_index.json
+    user_id_to_index: user_id_to_index.json
+    user_matrix: user_matrix.npz
+    popular_top: popular_top.parquet
+
+  out_artifacts:
+    submission: submissions/als/debug/IE_$$MIN_EVENTS_ITEM_ID$$_IC_$$MIN_CLICKS_ITEM_ID$$_UE_$$MIN_EVENTS_USER_ID$$_UC_$$MIN_CLICKS_USER_ID$$_submission.csv
+
+  kwargs:
+    top_size: 160
+    batch_size: 100
+    fallback_strategy: popular
+    filter_already_liked_items: true
