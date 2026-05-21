@@ -338,6 +338,22 @@ def load_config(config_path: str, constants_path: str | list[str] = None) -> dic
 
     return resolve_constants(cfg, constants)
 
+def deep_merge(base: dict, update: dict) -> dict:
+    result = base.copy()
+    for key, value in update.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+def deep_merge_inplace(base: dict, update: dict):
+    for key, value in update.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            deep_merge_inplace(base[key], value)
+        else:
+            base[key] = value
+
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(

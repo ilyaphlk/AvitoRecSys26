@@ -4,7 +4,7 @@ from pathlib import Path
 import mlflow
 import os
 import utils
-
+from loguru import logger
 
 class StageStatus(Enum):
     NOT_STARTED = 0
@@ -22,12 +22,12 @@ class BaseStage:
         self.run_name = run_name if run_name is not None else self.__class__.__name__
         self.run_name = self.run_name + run_name_suffix if run_name_suffix is not None else self.run_name
         self.kwargs = self.parse_kwargs()
-        self.assert_args_in_cfg()
+        self.assert_args_in_cfg(self.cfg)
         self.status = StageStatus.NOT_STARTED
         self.log_artifacts = self.cfg.get("mlflow_log_artifacts", True)
         self.remove_local = self.cfg.get("remove_local", False)
     
-    def assert_args_in_cfg(self):
+    def assert_args_in_cfg(self, cfg):
         """
             assert that all required args are in the cfg
         """
@@ -38,6 +38,22 @@ class BaseStage:
             parse function kwargs from cfg
         """
         raise NotImplementedError
+
+    def update_cfg(self, new_part: dict[str: Any], ignore_on_assert_failure=False):
+        new_cfg = utils.deep_merge(self.cfg, new_part)
+
+        try:
+            self.assert_args_in_cfg(cfg=new_cfg)
+            self.cfg = new_cfg
+        except AssertionError as e:
+            if ignore_on_assert_failure:
+                logger.warning("asserts failed when trying to update the stage config, ignoring...")
+            else:
+                logger.error("error when updating stage config")
+                raise
+        except Exception as e:
+            raise
+
     
     def load_artifacts(self) -> Dict[str, Any]:
         """
@@ -49,7 +65,7 @@ class BaseStage:
         """
             write run artifacts to disk (locally)
         """
-        write_artifacts_kwargs = ["partition_args", "artifacts_dir"]
+        write_artifacts_kwargs = {"partition_args", "artifacts_dir", "make_mlflow_artifacts_subdir"}
         artifacts_dir = self.cfg["out_artifacts"].get("artifacts_dir", "")
         for section_name, fp in self.cfg["out_artifacts"].items():
             if section_name in write_artifacts_kwargs:
@@ -74,3 +90,11 @@ class BaseStage:
                 mlflow.set_tag("status", "failed")
                 mlflow.set_tag("error", str(e))
                 raise
+
+            mlflow_run = mlflow.active_run()
+            return {
+                "run_name": self.run_name,
+                "run_id": mlflow_run.info.run_id,
+                "experiment_id": mlflow_run.info.experiment_id,
+                "experiment_name": mlflow.get_experiment(mlflow_run.info.experiment_id).name
+            }

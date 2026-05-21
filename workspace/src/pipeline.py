@@ -38,10 +38,23 @@ def make_stage_object(stage_dict):
         return stage_class(cfg, child_stage_class, stage_func)
     return stage_class(cfg, stage_func)
 
+def maybe_update_stage_config_from_prev_stages(stage, runs_info):
+    cfg = stage["object"].cfg
+    get_artifacts_from_stage = cfg["in_artifacts"].get("get_artifacts_from_stage", None) if "in_artifacts" in cfg else None
+    if get_artifacts_from_stage is not None:
+        assert get_artifacts_from_stage in runs_info, f"cannot update config with run_id, exp_name from {get_artifacts_from_stage}, stage has not run yet"
+        new_part = {
+            "in_artifacts": {
+                "artifacts_run_id": runs_info[get_artifacts_from_stage]["run_id"],
+                "artifacts_experiment_name": runs_info[get_artifacts_from_stage]["experiment_name"]
+        }}
+        stage["object"].update_cfg(new_part)
+        logger.info(f"updated stage config of {stage['name']} with run info from {get_artifacts_from_stage}.")
+
 def run_pipeline():
     assert len(sys.argv) == 2, "please provide a path to yaml config with pipeline args"
     pipeline_config_path = sys.argv[1]
-    # pipeline_config_path = "/project/workspace/config/pipeline/filter_data_by_blacklists/blacklist_min_users_min_items_debug.yml"
+    # pipeline_config_path = "/project/workspace/config/pipeline/als_inference_only.yml"
 
     pipeline_cfg = load_config(pipeline_config_path)["pipeline"]
 
@@ -63,11 +76,14 @@ def run_pipeline():
     mlflow.set_experiment(experiment_name=experiment_name)
 
     logger.info("starting pipeline...")
+    runs_info = dict()
     with mlflow.start_run(run_name=run_name):
         for stage in stages:
+            maybe_update_stage_config_from_prev_stages(stage, runs_info)
             logger.info(f"starting stage {stage['name']}...")
-            stage["object"].run()
-            logger.info(f"ran stage {stage['name']}.")
+            run_info = stage["object"].run()
+            runs_info[stage["name"]] = run_info
+            logger.info(f"ran stage {stage['name']}, with run_info: {run_info}")
 
 if __name__ == "__main__":
     run_pipeline()

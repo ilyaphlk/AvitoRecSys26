@@ -296,12 +296,12 @@ def make_train(train_events_path, eval_users_events_path):
 
 
 class ALSPreprocessStage(BaseStage):
-    def assert_args_in_cfg(self):
-        assert "in_artifacts" in self.cfg
-        assert "train_events_path" in self.cfg["in_artifacts"]
-        assert "eval_users_events_path" in self.cfg["in_artifacts"]
-        assert "out_artifacts" in self.cfg
-        assert "preprocessed_df_path" in self.cfg["out_artifacts"]
+    def assert_args_in_cfg(self, cfg):
+        assert "in_artifacts" in cfg
+        assert "train_events_path" in cfg["in_artifacts"]
+        assert "eval_users_events_path" in cfg["in_artifacts"]
+        assert "out_artifacts" in cfg
+        assert "preprocessed_df_path" in cfg["out_artifacts"]
 
     def parse_kwargs(self):
         return {
@@ -323,20 +323,20 @@ class ALSPreprocessStage(BaseStage):
 
 
 class ALSTrainStage(BaseStage):
-    def assert_args_in_cfg(self):
-        assert "in_artifacts" in self.cfg
-        assert "train_data" in self.cfg["in_artifacts"]
-        assert "eval_users" in self.cfg["in_artifacts"]
+    def assert_args_in_cfg(self, cfg):
+        assert "in_artifacts" in cfg
+        assert "train_data" in cfg["in_artifacts"]
+        assert "eval_users" in cfg["in_artifacts"]
 
-        assert "kwargs" in self.cfg
-        assert "steps" in self.cfg["kwargs"]
-        assert "hidden_dim" in self.cfg["kwargs"]
+        assert "kwargs" in cfg
+        assert "steps" in cfg["kwargs"]
+        assert "hidden_dim" in cfg["kwargs"]
                     
-        assert "out_artifacts" in self.cfg
-        assert "artifacts_dir" in self.cfg["out_artifacts"]
-        assert "model" in self.cfg["out_artifacts"]
-        assert "item_id_to_index" in self.cfg["out_artifacts"]
-        assert "user_id_to_index" in self.cfg["out_artifacts"]
+        assert "out_artifacts" in cfg
+        assert "artifacts_dir" in cfg["out_artifacts"]
+        assert "model" in cfg["out_artifacts"]
+        assert "item_id_to_index" in cfg["out_artifacts"]
+        assert "user_id_to_index" in cfg["out_artifacts"]
 
     def parse_kwargs(self):
         return self.cfg["kwargs"]
@@ -348,8 +348,15 @@ class ALSTrainStage(BaseStage):
         }
 
     def write_artifacts(self, run_result):
-        super().write_artifacts(run_result)
         out_artifacts = self.cfg["out_artifacts"]
+        make_mlflow_subdirs = self.cfg["out_artifacts"].get("make_mlflow_artifacts_subdir", False)
+        if make_mlflow_subdirs:
+            mlflow_run = mlflow.active_run()
+            run_id, exp_name = mlflow_run.info.run_id, mlflow.get_experiment(mlflow_run.info.experiment_id).name
+            out_artifacts["artifacts_dir"] = os.path.join(out_artifacts["artifacts_dir"], exp_name, run_id, "")
+
+        super().write_artifacts(run_result)
+
         artifacts_dir = self.cfg["out_artifacts"].get("artifacts_dir", "")
 
         for artifact_key in ["model", "item_id_to_index", "user_id_to_index", "user_matrix", "popular_top"]:
@@ -374,26 +381,31 @@ class ALSTrainStage(BaseStage):
 
 
 class ALSInferenceStage(BaseStage):
-    def assert_args_in_cfg(self):
-        assert "in_artifacts" in self.cfg
-        assert "eval_users" in self.cfg["in_artifacts"]
-        assert "model" in self.cfg["in_artifacts"]
-        assert "item_id_to_index" in self.cfg["in_artifacts"]
-        assert "user_id_to_index" in self.cfg["in_artifacts"]
-        assert "user_matrix" in self.cfg["in_artifacts"] or not self.cfg["kwargs"].get("filter_already_liked_items", False)
-        assert "popular_top" in self.cfg["in_artifacts"] or not self.cfg["kwargs"].get("fallback_strategy") == "popular"
+    def assert_args_in_cfg(self, cfg):
+        assert "in_artifacts" in cfg
+        assert "eval_users" in cfg["in_artifacts"]
+        assert "model" in cfg["in_artifacts"]
+        assert "item_id_to_index" in cfg["in_artifacts"]
+        assert "user_id_to_index" in cfg["in_artifacts"]
+        assert "user_matrix" in cfg["in_artifacts"] or not cfg["kwargs"].get("filter_already_liked_items", False)
+        assert "popular_top" in cfg["in_artifacts"] or not cfg["kwargs"].get("fallback_strategy") == "popular"
 
-        assert "out_artifacts" in self.cfg
-        assert "submission" in self.cfg["out_artifacts"]
+        assert "out_artifacts" in cfg
+        assert "submission" in cfg["out_artifacts"]
+
+        assert "make_mlflow_artifacts_subdir" not in cfg["out_artifacts"] or "artifacts_dir" in cfg["out_artifacts"]
         
 
     def load_artifacts(self):
         in_artifacts = self.cfg["in_artifacts"]
         artifacts_dir = self.cfg["in_artifacts"].get("artifacts_dir", "")
 
+        artifacts_run_id = self.cfg["in_artifacts"].get("artifacts_run_id", "")
+        artifacts_experiment_name = self.cfg["in_artifacts"].get("artifacts_experiment_name", "")
+
         for artifact_key in ["model", "item_id_to_index", "user_id_to_index", "user_matrix", "popular_top"]:
             if artifact_key in in_artifacts:
-                in_artifacts[artifact_key] = os.path.join(artifacts_dir, in_artifacts[artifact_key])
+                in_artifacts[artifact_key] = os.path.join(artifacts_dir, artifacts_experiment_name, artifacts_run_id, in_artifacts[artifact_key])
 
         item_id_to_index = utils.load_artifact(in_artifacts["item_id_to_index"])
         user_id_to_index = utils.load_artifact(in_artifacts["user_id_to_index"])
@@ -408,24 +420,27 @@ class ALSInferenceStage(BaseStage):
             "popular_top": utils.read_parquet(in_artifacts["popular_top"]) if "popular_top" in in_artifacts else None
         }
 
-        # with open() as f_i2idx, open(os.path.join(utils.LOCAL_DATA_DIR, artifacts_dir, in_artifacts["user_id_to_index"])) as f_u2idx:
-        #     return {
-        #         "user_to_pred": utils.read_csv(in_artifacts["eval_users"]),
-        #         "model": implicit.als.AlternatingLeastSquares().load(os.path.join(utils.LOCAL_DATA_DIR, artifacts_dir, in_artifacts["model"])),
-        #         "item_id_to_index": json.load(f_i2idx, object_hook=lambda d: {int(k): v for k, v in d.items()}),
-        #         "user_id_to_index": json.load(f_u2idx, object_hook=lambda d: {int(k): v for k, v in d.items()}),
-        #         "user_matrix": sparse.load_npz(os.path.join(utils.LOCAL_DATA_DIR, artifacts_dir, in_artifacts["user_matrix"])) if "user_matrix" in in_artifacts else None,
-        #         "popular_top": utils.read_parquet(os.path.join(artifacts_dir, in_artifacts["popular_top"])) if "popular_top" in in_artifacts else None,
-        #     }
-
     def parse_kwargs(self):
         return self.cfg["kwargs"]
     
     def write_artifacts(self, run_result):
+        make_mlflow_subdirs = self.cfg["out_artifacts"].get("make_mlflow_artifacts_subdir", False)
+
+        out_artifacts = self.cfg["out_artifacts"]
+        if make_mlflow_subdirs:
+            mlflow_run = mlflow.active_run()
+            run_id, exp_name = mlflow_run.info.run_id, mlflow.get_experiment(mlflow_run.info.experiment_id).name
+            out_artifacts["artifacts_dir"] = os.path.join(out_artifacts["artifacts_dir"], exp_name, run_id, "")
+
         super().write_artifacts(run_result)
+
+        if "artifacts_dir" in out_artifacts:
+            artifacts_dir = out_artifacts["artifacts_dir"]
+            out_artifacts["submission"] = os.path.join(artifacts_dir, out_artifacts["submission"])
+
         utils.write_csv(
             run_result.select(pl.col("user_id"), pl.col("item_id")),
-            self.cfg["out_artifacts"]["submission"],
+            out_artifacts["submission"],
             remove_local=self.remove_local,
             log_artifact=self.log_artifacts
         )

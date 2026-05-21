@@ -299,7 +299,7 @@ def prepare_local_eval(
 
 
 class PrepareLocalEvalStage(BaseStage):
-    def assert_args_in_cfg(self):
+    def assert_args_in_cfg(self, cfg):
         assert "in_artifacts" in self.cfg
         assert "filename_in" in self.cfg["in_artifacts"]
         assert "item_features_path" in self.cfg["in_artifacts"]

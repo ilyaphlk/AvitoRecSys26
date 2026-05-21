@@ -200,7 +200,7 @@ def assert_paths_type_match(cfg):
 
 
 class DataTransformStage(BaseStage):
-    def assert_args_in_cfg(self):
+    def assert_args_in_cfg(self, cfg):
         assert "in_artifacts" in self.cfg
         assert "filename_in" in self.cfg["in_artifacts"]
 
@@ -317,7 +317,7 @@ def join_tables(frames, join_tables, eager_execution=False):
 
 
 class JoinTablesStage(BaseStage):
-    def assert_args_in_cfg(self):
+    def assert_args_in_cfg(self, cfg):
         assert "in_artifacts" in self.cfg
         assert "filename_in" in self.cfg["in_artifacts"]
         assert "join_tables" in self.cfg["in_artifacts"]
@@ -390,8 +390,8 @@ class SequentialStage(BaseStage):
         self.stage_class = stage_class
         super().__init__(cfg, func, run_name)
 
-    def assert_args_in_cfg(self):
-        return self.stage_class.assert_args_in_cfg(self)
+    def assert_args_in_cfg(self, cfg):
+        return self.stage_class.assert_args_in_cfg(self, cfg)
 
     def parse_kwargs(self):
         return self.stage_class.parse_kwargs(self)
@@ -437,7 +437,7 @@ def make_empty_df(schema: dict[str, str]):
     return pl.LazyFrame(schema=schema)
 
 class MakeAccumStage(BaseStage):
-    def assert_args_in_cfg(self):
+    def assert_args_in_cfg(self, cfg):
         assert "out_artifacts" in self.cfg
         assert "filename_accum" in self.cfg["out_artifacts"]
 
