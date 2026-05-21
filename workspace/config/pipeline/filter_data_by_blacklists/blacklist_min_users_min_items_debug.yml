@@ -1,0 +1,35 @@
+pipeline:
+  experiment_name: filter_tail_data
+  run_name: blacklist_train_min_users_shows_clicks_min_items_shows_clicks
+  stages:
+    - stage_name: aggregate_partitions
+      config_path: /project/workspace/config/data/features/counters_shows_clicks_multidir_dev_debug.yml
+      stage_class: DataTransformStage
+      stage_func: process_data
+      constants_path:
+        - /project/workspace/config/data/constants/min_item_shows_clicks.yml
+        - /project/workspace/config/data/constants/min_user_shows_clicks.yml
+    
+    - stage_name: make_item_id_blacklist
+      config_path: /project/workspace/config/data/features/counters_shows_clicks_multidir_dev_debug.yml
+      stage_class: DataTransformStage
+      stage_func: process_data
+      constants_path:
+        - /project/workspace/config/data/constants/min_item_shows_clicks.yml
+        - /project/workspace/config/data/constants/min_user_shows_clicks.yml
+
+    - stage_name: make_user_id_blacklist
+      config_path: /project/workspace/config/data/features/counters_shows_clicks_multidir_dev_debug.yml
+      stage_class: DataTransformStage
+      stage_func: process_data
+      constants_path:
+        - /project/workspace/config/data/constants/min_item_shows_clicks.yml
+        - /project/workspace/config/data/constants/min_user_shows_clicks.yml
+
+    - stage_name: filter_by_blacklists
+      config_path: /project/workspace/config/data/features/counters_shows_clicks_multidir_dev_debug.yml
+      stage_class: JoinTablesStage
+      stage_func: join_tables
+      constants_path:
+        - /project/workspace/config/data/constants/min_item_shows_clicks.yml
+        - /project/workspace/config/data/constants/min_user_shows_clicks.yml

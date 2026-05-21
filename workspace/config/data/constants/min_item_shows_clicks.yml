@@ -1,0 +1,3 @@
+constants:
+  MIN_EVENTS_ITEM_ID: 10
+  MIN_CLICKS_ITEM_ID: 1
