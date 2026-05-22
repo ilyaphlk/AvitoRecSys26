@@ -281,6 +281,7 @@ def calc_metric(df_true, df_pred, df_users=None, df_item_verticals=None):
     retrieved_by_user = joined.group_by("user_id").agg(pl.len().alias("retrieved_items"))
     total_by_user = total_by_user.join(retrieved_by_user, on=("user_id"), how="left").fill_null(0)
     recall_by_user = total_by_user.select(
+        pl.col("user_id"),
         (pl.col("retrieved_items") / pl.col("total_items")).alias("recall")
     )
 
@@ -290,7 +291,7 @@ def calc_metric(df_true, df_pred, df_users=None, df_item_verticals=None):
 
     if df_users is not None:
         recall_with_buckets = recall_by_user.join(df_users, on="user_id")
-        res["per_bucket_recall"] = recall_with_buckets.group_by("bucket").agg(pl.col("recall").mean())
+        res["per_bucket_recall"] = recall_with_buckets.group_by("bucket").agg(pl.col("recall").mean()).sort(by="bucket")
 
         if df_item_verticals is not None:
             filtered_items = df_item_verticals.select(["item_id", "vertical_id"]).join(df_pred.lazy(), on="item_id", how="semi")
@@ -301,8 +302,8 @@ def calc_metric(df_true, df_pred, df_users=None, df_item_verticals=None):
                 .group_by(["bucket", "vertical_id"]).agg(pl.len().alias("cnt"))
                 .collect()
             )
-            total_by_bucket = bucket_v_id_counts.group_by("bucket").agg(pl.col("cnt").sum().alias("total")).collect()
-            total_by_v_id = bucket_v_id_counts.group_by("vertical_id").agg(pl.col("cnt").sum().alias("total")).collect()
+            total_by_bucket = bucket_v_id_counts.group_by("bucket").agg(pl.col("cnt").sum().alias("total"))
+            total_by_v_id = bucket_v_id_counts.group_by("vertical_id").agg(pl.col("cnt").sum().alias("total"))
 
             bucket_v_id_counts_norm_by_bucket = bucket_v_id_counts.join(
                 total_by_bucket,on="bucket", how="left"
@@ -324,9 +325,9 @@ def calc_metric(df_true, df_pred, df_users=None, df_item_verticals=None):
             confusion_matrix_pct_by_bucket = bucket_v_id_counts_norm_by_bucket.pivot(on="vertical_id", index="bucket", values="pct")
             confusion_matrix_pct_by_v_id = bucket_v_id_counts_norm_by_v_id.pivot(on="bucket", index="vertical_id", values="pct")
 
-            res["confusion_matrix"] = confusion_matrix
-            res["confusion_matrix_pct_by_bucket"] = confusion_matrix_pct_by_bucket
-            res["confusion_matrix_pct_by_v_id"] = confusion_matrix_pct_by_v_id
+            res["confusion_matrix"] = confusion_matrix.sort(by="bucket")
+            res["confusion_matrix_pct_by_bucket"] = confusion_matrix_pct_by_bucket.sort(by="bucket")
+            res["confusion_matrix_pct_by_v_id"] = confusion_matrix_pct_by_v_id.sort(by="vertical_id")
 
     return res
 

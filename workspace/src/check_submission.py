@@ -1,6 +1,7 @@
 from utils import check_submission
 import argparse
 from loguru import logger
+import polars as pl
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
@@ -23,12 +24,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     submission_res = check_submission(
-        args.ground_truth_path,
-        args.submission_path,
+        args.gt_path,
+        args.preds_path,
         args.users_path,
         args.items_path
     )
 
-    logger.info(f"recall on {args.ground_truth_path}")
-    for k, v in submission_res.items():
-        logger.info(f"{k}: {v}")
+    logger.info(f"recall on {args.gt_path}")
+    with pl.Config(tbl_cols=-1):
+        for k, v in submission_res.items():
+            logger.info(f"{k}: {v}")
