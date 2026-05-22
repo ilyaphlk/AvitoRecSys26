@@ -1,0 +1,74 @@
+constants:
+  CONTACT_EIDS: [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]
+  TRAIN_SUBFOLD: no_eval_users  # so we can join 
+  EVAL_SUBFOLD: local_events
+  # MIN_EVENTS_ITEM_ID: int
+  # MIN_CLICKS_ITEM_ID: int
+  # MIN_EVENTS_USER_ID: int
+  # MIN_CLICKS_USER_ID: int
+  # TRAIN_SUBFOLD: str, e.g. "filter_dt"
+  # EVAL_SUBFOLD: str, e.g. "local_events"
+
+
+select_cols:
+  mlflow_log_artifacts: False
+  in_artifacts:
+    filename_in:
+      - dev/raw/train/$$TRAIN_SUBFOLD$$/part_000.pq
+      - dev/raw/eval/$$EVAL_SUBFOLD$$/part_000.pq  # in aws config use train/filter_dt and eval_user_events.pq
+    do_merge: True
+  out_artifacts:
+    filename_out: dev/processed/debug_select_cols/
+    partition_args:
+      - {part: df, args: {key: user_id}}
+      - {part: [user_id], args: {key: user_id}}
+      - {part: [item_id, user_id], args: {key: user_id}}
+      - {part: [item_id], args: {key: item_id}}
+  kwargs:
+    cfg:
+      eager_execution: False
+      join_back: False
+      select:
+        pre: ["user_id", "item_id", "eid"]
+        post: ["user_id", "item_id"]
+      features:
+        aggregations:
+        - group_by: [user_id]
+          agg:
+            - {alias: events_cnt_by_user_id, col: eid, func: count}
+            - {alias: clicks_cnt_by_user_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
+          select:
+            post: ["user_id", "events_cnt_by_user_id"]
+      filters:
+        pre:
+          reduce_as: all
+          filters:
+            item_id: {">": 5000, "<": 15000}
+
+
+join_selected:
+  mlflow_log_artifacts: False
+  in_artifacts:
+    filename_in: dev/processed/debug_select_cols/
+    do_merge: True
+    join_tables:
+    - join_key: item_id
+      table_path: dict/item_features.parquet
+      join_type: left
+      join_id: item_features
+  out_artifacts:
+    filename_out: dev/processed/debug_select_cols/joined_vertical_id/
+    partition_args:
+      - {part: df, args: {key: user_id}}
+  kwargs:
+    eager_execution: False
+    transform_join_tables:
+      item_features:  # join_id
+        select:
+          pre: ["item_id", "vertical_id"]
+          post: ["item_id", "vertical_id"]
+        filters:
+          pre:
+            reduce_as: all
+            filters:
+              item_id: {"<": 10000}

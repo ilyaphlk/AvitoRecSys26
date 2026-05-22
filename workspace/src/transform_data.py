@@ -10,6 +10,7 @@ import mlflow
 import copy
 import utils
 from collections import OrderedDict
+from typing import Any
 
 PRED_OPS = {
     "<":  lambda col, val: col < val,
@@ -62,8 +63,18 @@ def parse_filters_cfg(cfg):
     res = dict()
     res["pre"] = make_filters(cfg["filters"]["pre"]) if "pre" in cfg["filters"] else [pl.lit(True)]
     res["post"] = make_filters(cfg["filters"]["post"]) if "post" in cfg["filters"] else [pl.lit(True)]
-    
+
     return res
+
+def parse_select_cfg(cfg):
+    if "select" not in cfg:
+        return {"pre": [pl.all()], "post": [pl.all()]}
+    
+    res = dict()
+    res["pre"] = cfg["select"].get("pre", [pl.all()])
+    res["post"] = cfg["select"].get("post", [pl.all()])
+    return res
+
 
 def make_aggregations(df: pl.LazyFrame, cfg: dict) -> dict[tuple[str], pl.LazyFrame]:
     if "features" not in cfg or "aggregations" not in cfg["features"]:
@@ -72,12 +83,13 @@ def make_aggregations(df: pl.LazyFrame, cfg: dict) -> dict[tuple[str], pl.LazyFr
     agg_frames = dict()
     for agg_block in cfg["features"]["aggregations"]:
         filters_block = parse_filters_cfg(agg_block)
+        select_block = parse_select_cfg(agg_block)
         keys = agg_block["group_by"]
         exprs = [make_agg_expr(item, keys) for item in agg_block["agg"]]
         agg_frames[tuple(sorted(keys))] = (
-            df.filter(filters_block["pre"])
+            df.filter(filters_block["pre"]).select(select_block["pre"])
             .group_by(keys).agg(exprs)
-            .filter(filters_block["post"])
+            .filter(filters_block["post"]).select(select_block["post"])
         )
 
     return agg_frames
@@ -114,7 +126,8 @@ def make_df(df, cfg, df_accum=None):
     assert not(overwrite_df_in and cfg.get("join_back", True)), "either overwrite df with the agg frame or join frames to original"
 
     full_df_filters = parse_filters_cfg(cfg)
-    df = df.filter(full_df_filters["pre"])
+    full_df_select = parse_select_cfg(cfg)
+    df = df.filter(full_df_filters["pre"]).select(full_df_select["pre"])
     
     agg_frames = make_aggregations(df, cfg)
 
@@ -123,7 +136,7 @@ def make_df(df, cfg, df_accum=None):
 
     if overwrite_df_in:  # return (the only) agg frame as main df
         join_key = next(iter(agg_frames))
-        return {"df": agg_frames[join_key].filter(full_df_filters["post"])}
+        return {"df": agg_frames[join_key].filter(full_df_filters["post"]).select(full_df_select["post"])}
 
     if cfg.get("join_back", True):
         for keys, agg_frame in agg_frames.items():
@@ -134,12 +147,12 @@ def make_df(df, cfg, df_accum=None):
             agg_frame = agg_frame.lazy() if isinstance(agg_frame, pl.DataFrame) else agg_frame
             df = df.join(agg_frame, on=keys, how='inner')
 
-        return {"df": df.filter(full_df_filters["post"])}
+        return {"df": df.filter(full_df_filters["post"]).select(full_df_select["post"])}
 
     if "filters" not in cfg:  # means that no changes made to input df
         return {"agg_frames": agg_frames}
 
-    return {"df": df.filter(full_df_filters["post"]), "agg_frames": agg_frames}
+    return {"df": df.filter(full_df_filters["post"]).select(full_df_select["post"]), "agg_frames": agg_frames}
 
 def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
     assert df_accum is None or (cfg.get("incremental_accum", False) and len(frames) == 1)
@@ -307,9 +320,19 @@ class DataTransformStage(BaseStage):
 def maybe_collect(df, eager=False):
     return df.collect() if eager and isinstance(df, pl.LazyFrame) else df
 
-def join_tables(frames, join_tables, eager_execution=False):
+def join_tables(frames: list[pl.DataFrame | pl.LazyFrame], join_tables: OrderedDict[str, dict[str, Any]], eager_execution=False, transform_join_tables=None):
+    if transform_join_tables is not None:
+        for join_id, tr in transform_join_tables.items():
+            selects = parse_select_cfg(tr)
+            filters = parse_filters_cfg(tr)
+            join_tables[join_id]["df"] = (
+                join_tables[join_id]["df"]
+                .filter(filters["pre"]).select(selects["pre"])
+                .filter(filters["post"]).select(selects["post"])
+            )
+
     for idx in range(len(frames)):
-        for jt in join_tables:
+        for join_id, jt in join_tables.items():
             frames[idx] = maybe_collect(frames[idx], eager_execution).join(
                 maybe_collect(jt["df"], eager_execution), on=jt["join_key"], how=jt["join_type"]
             )
@@ -334,10 +357,17 @@ class JoinTablesStage(BaseStage):
         path_in = self.cfg["in_artifacts"]["filename_in"]
 
         res = {
-            "join_tables": [
-                {"df": utils.scan_parquet(jt["name"]), "join_key": jt["join_key"], "join_type": jt["join_type"]}
+            "join_tables": OrderedDict([
+                (
+                    jt["join_id"],
+                    {
+                        "df": utils.scan_parquet(jt["table_path"]),
+                        "join_key": jt["join_key"],
+                        "join_type": jt["join_type"],
+                    }
+                )
                 for jt in self.cfg["in_artifacts"]["join_tables"]
-            ]
+            ])
         }
 
         dir_in, part_filenames = parse_path_in(path_in)
