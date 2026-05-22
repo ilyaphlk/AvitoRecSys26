@@ -150,12 +150,13 @@ def read_csv(path: str | list[str]) -> pl.DataFrame:
     if isinstance(path, str):
         path = [path]
 
+    w_prefix = None
     if STORAGE_BACKEND == "s3":
         s3_prefix = "s3://{S3_BUCKET}/{S3_DATA_DIR}/{path}"
         w_prefix = [s3_prefix.format(S3_BUCKET=S3_BUCKET, S3_DATA_DIR=S3_DATA_DIR, path=elem) for elem in path]
-        return pl.read_csv(w_prefix)
     else:
-        return pl.read_csv([os.path.join(LOCAL_DATA_DIR, elem) for elem in path])
+        w_prefix = [os.path.join(LOCAL_DATA_DIR, elem) for elem in path]
+    return pl.concat([pl.read_csv(elem) for elem in w_prefix])
 
 def als_save(obj: Any, path: str):
     """
@@ -262,12 +263,13 @@ def listdir(path: str, glob_pattern=None) -> list[str]:
     return os.listdir(search_dir) if glob_pattern is None else glob.glob(glob_pattern, root_dir=search_dir)
 
 
-def calc_metric(df_true, df_pred, df_users=None, df_item_verticals=None):
+def calc_metric(df_true, df_pred, df_users=None, df_item_verticals=None, top_sizes: list[int] = None):
     """
         calculate mean recall across all eval (true) users
         df_true: user_id, item_id
         df_pred: user_id, item_id
         df_users: user_id, vertical_id
+        top_sizes: list of sizes for which to calculate recall@ k
     """
     # assert that sets of users are the same
     assert set(df_true["user_id"]) == set(df_pred["user_id"]), "sets of users in eval and pred are different"
@@ -279,18 +281,34 @@ def calc_metric(df_true, df_pred, df_users=None, df_item_verticals=None):
     )
     assert(all(count_unique_preds["count"] == count_unique_preds["count_unique"])), "pred has users with non-unique items"
 
-    joined = df_true.join(df_pred, on=("user_id", "item_id"))
-    total_by_user = df_true.group_by("user_id").agg(pl.len().alias("total_items"))
-    retrieved_by_user = joined.group_by("user_id").agg(pl.len().alias("retrieved_items"))
-    total_by_user = total_by_user.join(retrieved_by_user, on=("user_id"), how="left").fill_null(0)
-    recall_by_user = total_by_user.select(
-        pl.col("user_id"),
-        (pl.col("retrieved_items") / pl.col("total_items")).alias("recall")
-    )
+    top_sizes = [160] if top_sizes is None else sorted(list(set(top_sizes) | set([160])))
+
+    recall_at_k = dict()
+    for top_size in top_sizes:
+        logger.info(f"calculating recall@{top_size}")
+        df_pred_top = (
+            df_pred
+            .with_columns(
+                pl.col("scores")
+                .rank(method="dense", descending=True)
+                .over("user_id")
+                .alias("score_rank")
+            )
+            .filter(pl.col("score_rank") <= top_size)    
+        )
+        joined = df_true.join(df_pred_top, on=("user_id", "item_id"))
+        total_by_user = df_true.group_by("user_id").agg(pl.len().alias("total_items"))
+        retrieved_by_user = joined.group_by("user_id").agg(pl.len().alias("retrieved_items"))
+        total_by_user = total_by_user.join(retrieved_by_user, on=("user_id"), how="left").fill_null(0)
+        recall_by_user = total_by_user.select(
+            pl.col("user_id"),
+            (pl.col("retrieved_items") / pl.col("total_items")).alias("recall")
+        )
+        recall_at_k[str(top_size)] = recall_by_user["recall"].mean()
 
     res = dict()
-
-    res["overall_recall"] = recall_by_user["recall"].mean()
+    res["overall_recall"] = recall_at_k[str(160)]
+    res["recall_at_k"] = pl.DataFrame(recall_at_k)
 
     if df_users is not None:
         recall_with_buckets = recall_by_user.join(df_users, on="user_id")
@@ -335,13 +353,13 @@ def calc_metric(df_true, df_pred, df_users=None, df_item_verticals=None):
     return res
 
 
-def check_submission(df_true_filename, df_pred_filename, df_users_filename=None, df_item_verticals_filename=None):
+def check_submission(df_true_filename, df_pred_filename, df_users_filename=None, df_item_verticals_filename=None, top_sizes=None):
     df_true = read_csv(df_true_filename)
     df_pred = read_csv(df_pred_filename)
     df_users = read_csv(df_users_filename) if df_users_filename is not None else None
     df_item_verticals = scan_parquet(df_item_verticals_filename) if df_item_verticals_filename is not None else None
 
-    return calc_metric(df_true, df_pred, df_users, df_item_verticals)
+    return calc_metric(df_true, df_pred, df_users, df_item_verticals, top_sizes)
 
 
 def resolve_constants(cfg: dict, constants: dict = None) -> dict:

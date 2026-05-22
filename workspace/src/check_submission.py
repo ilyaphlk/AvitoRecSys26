@@ -38,17 +38,11 @@ class CheckSubmissionStage(BaseStage):
             artifacts_dir, artifacts_experiment_name, artifacts_run_id, in_artifacts["preds_path"]
         )
 
-        # ground_truth / users / items are standalone paths (not under the inference subdir)
-        df_true = utils.read_csv(in_artifacts["ground_truth_path"])
-        df_pred = utils.read_csv(preds_path)
-        df_users = utils.read_csv(in_artifacts["users_path"]) if "users_path" in in_artifacts else None
-        df_item_verticals = utils.scan_parquet(in_artifacts["items_path"]) if "items_path" in in_artifacts else None
-
         return {
-            "df_true": df_true,
-            "df_pred": df_pred,
-            "df_users": df_users,
-            "df_item_verticals": df_item_verticals,
+            "df_true": utils.read_csv(in_artifacts["ground_truth_path"]),
+            "df_pred": utils.read_csv(preds_path),
+            "df_users": utils.read_csv(in_artifacts["users_path"]) if "users_path" in in_artifacts else None,
+            "df_item_verticals": utils.scan_parquet(in_artifacts["items_path"]) if "items_path" in in_artifacts else None,
         }
 
     def write_artifacts(self, run_result):
@@ -105,13 +99,18 @@ if __name__ == "__main__":
         "--items-path", type=str, required=False, default=None,
         help="Path to items parquet file (item_id, vertical_id)",
     )
+    parser.add_argument(
+        "--top-sizes", nargs='+', type=int, required=False, default=None,
+        help="A list of top sizes for which to compute recall@k",
+    )
     args = parser.parse_args()
 
     submission_res = check_submission(
         args.gt_path,
         args.preds_path,
         args.users_path,
-        args.items_path
+        args.items_path,
+        args.top_sizes,
     )
 
     logger.info(f"recall on {args.gt_path}")

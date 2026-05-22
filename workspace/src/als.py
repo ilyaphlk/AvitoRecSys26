@@ -437,10 +437,18 @@ class ALSInferenceStage(BaseStage):
         if "artifacts_dir" in out_artifacts:
             artifacts_dir = out_artifacts["artifacts_dir"]
             out_artifacts["submission"] = os.path.join(artifacts_dir, out_artifacts["submission"])
+            out_artifacts["submission_w_scores"] = os.path.join(artifacts_dir, out_artifacts["submission_w_scores"])
 
         utils.write_csv(
             run_result.select(pl.col("user_id"), pl.col("item_id")),
             out_artifacts["submission"],
+            remove_local=self.remove_local,
+            log_artifact=self.log_artifacts
+        )
+
+        utils.write_csv(
+            run_result.select(pl.col("user_id"), pl.col("item_id"), pl.col("scores")),
+            out_artifacts["submission_w_scores"],
             remove_local=self.remove_local,
             log_artifact=self.log_artifacts
         )
