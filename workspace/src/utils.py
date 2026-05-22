@@ -146,13 +146,16 @@ def write_csv(df: pl.DataFrame, path: str, remove_local=True, log_artifact=False
         if remove_local:
             os.remove(full_path)
 
-def read_csv(path: str) -> pl.DataFrame:
+def read_csv(path: str | list[str]) -> pl.DataFrame:
+    if isinstance(path, str):
+        path = [path]
+
     if STORAGE_BACKEND == "s3":
-        return pl.read_csv(f"s3://{S3_BUCKET}/{S3_DATA_DIR}/{path}",
-                               #storage_options={"aws_region": AWS_DEFAULT_REGION}
-                               )
+        s3_prefix = "s3://{S3_BUCKET}/{S3_DATA_DIR}/{path}"
+        w_prefix = [s3_prefix.format(S3_BUCKET=S3_BUCKET, S3_DATA_DIR=S3_DATA_DIR, path=elem) for elem in path]
+        return pl.read_csv(w_prefix)
     else:
-        return pl.read_csv(os.path.join(LOCAL_DATA_DIR, path))
+        return pl.read_csv([os.path.join(LOCAL_DATA_DIR, elem) for elem in path])
 
 def als_save(obj: Any, path: str):
     """
