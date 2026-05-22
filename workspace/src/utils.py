@@ -333,10 +333,10 @@ def calc_metric(df_true, df_pred, df_users=None, df_item_verticals=None):
 
 
 def check_submission(df_true_filename, df_pred_filename, df_users_filename=None, df_item_verticals_filename=None):
-    df_true = pl.read_csv(df_true_filename)
-    df_pred = pl.read_csv(df_pred_filename)
-    df_users = pl.read_csv(df_users_filename) if df_users_filename is not None else None
-    df_item_verticals = pl.scan_parquet(df_item_verticals_filename) if df_item_verticals_filename is not None else None
+    df_true = read_csv(df_true_filename)
+    df_pred = read_csv(df_pred_filename)
+    df_users = read_csv(df_users_filename) if df_users_filename is not None else None
+    df_item_verticals = scan_parquet(df_item_verticals_filename) if df_item_verticals_filename is not None else None
 
     return calc_metric(df_true, df_pred, df_users, df_item_verticals)
 
