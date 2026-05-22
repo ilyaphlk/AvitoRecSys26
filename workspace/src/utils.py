@@ -259,9 +259,12 @@ def listdir(path: str, glob_pattern=None) -> list[str]:
     return os.listdir(search_dir) if glob_pattern is None else glob.glob(glob_pattern, root_dir=search_dir)
 
 
-def calc_metric(df_true, df_pred):
+def calc_metric(df_true, df_pred, df_users=None, df_item_verticals=None):
     """
         calculate mean recall across all eval (true) users
+        df_true: user_id, item_id
+        df_pred: user_id, item_id
+        df_users: user_id, vertical_id
     """
     # assert that sets of users are the same
     assert set(df_true["user_id"]) == set(df_pred["user_id"]), "sets of users in eval and pred are different"
@@ -274,20 +277,66 @@ def calc_metric(df_true, df_pred):
     assert(all(count_unique_preds["count"] == count_unique_preds["count_unique"])), "pred has users with non-unique items"
 
     joined = df_true.join(df_pred, on=("user_id", "item_id"))
-    df_true_by_user = df_true.group_by("user_id").agg(pl.len().alias("total_items"))
-    joined_by_user = joined.group_by("user_id").agg(pl.len().alias("retrieved_items"))
-    df_true_by_user = df_true_by_user.join(joined_by_user, on=("user_id"), how="left").fill_null(0)
-    df_true_by_user = df_true_by_user.select(
+    total_by_user = df_true.group_by("user_id").agg(pl.len().alias("total_items"))
+    retrieved_by_user = joined.group_by("user_id").agg(pl.len().alias("retrieved_items"))
+    total_by_user = total_by_user.join(retrieved_by_user, on=("user_id"), how="left").fill_null(0)
+    recall_by_user = total_by_user.select(
         (pl.col("retrieved_items") / pl.col("total_items")).alias("recall")
     )
-    return df_true_by_user["recall"].mean()
+
+    res = dict()
+
+    res["overall_recall"] = recall_by_user["recall"].mean()
+
+    if df_users is not None:
+        recall_with_buckets = recall_by_user.join(df_users, on="user_id")
+        res["per_bucket_recall"] = recall_with_buckets.group_by("bucket").agg(pl.col("recall").mean())
+
+        if df_item_verticals is not None:
+            filtered_items = df_item_verticals.select(["item_id", "vertical_id"]).join(df_pred.lazy(), on="item_id", how="semi")
+            preds_with_verticals = df_pred.lazy().join(filtered_items, on="item_id", how="left")
+            bucket_v_id_counts = (
+                preds_with_verticals
+                .join(df_users.lazy(), on="user_id", how="left")
+                .group_by(["bucket", "vertical_id"]).agg(pl.len().alias("cnt"))
+                .collect()
+            )
+            total_by_bucket = bucket_v_id_counts.group_by("bucket").agg(pl.col("cnt").sum().alias("total")).collect()
+            total_by_v_id = bucket_v_id_counts.group_by("vertical_id").agg(pl.col("cnt").sum().alias("total")).collect()
+
+            bucket_v_id_counts_norm_by_bucket = bucket_v_id_counts.join(
+                total_by_bucket,on="bucket", how="left"
+            ).select(
+                pl.col("bucket"),
+                pl.col("vertical_id"),
+                (100. * pl.col("cnt") / pl.col("total")).alias("pct")
+            )
+
+            bucket_v_id_counts_norm_by_v_id = bucket_v_id_counts.join(
+                total_by_v_id,on="vertical_id", how="left"
+            ).select(
+                pl.col("bucket"),
+                pl.col("vertical_id"),
+                (100. * pl.col("cnt") / pl.col("total")).alias("pct")
+            )
+
+            confusion_matrix = bucket_v_id_counts.pivot(on="vertical_id", index="bucket", values="cnt")
+            confusion_matrix_pct_by_bucket = bucket_v_id_counts_norm_by_bucket.pivot(on="vertical_id", index="bucket", values="pct")
+            confusion_matrix_pct_by_v_id = bucket_v_id_counts_norm_by_v_id.pivot(on="bucket", index="vertical_id", values="pct")
+
+            res["confusion_matrix"] = confusion_matrix
+            res["confusion_matrix_pct_by_bucket"] = confusion_matrix_pct_by_bucket
+            res["confusion_matrix_pct_by_v_id"] = confusion_matrix_pct_by_v_id
+
+    return res
 
 
-def check_submission(df_true_filename, df_pred_filename):
+def check_submission(df_true_filename, df_pred_filename, df_users_filename=None):
     df_true = pl.read_csv(df_true_filename)
     df_pred = pl.read_csv(df_pred_filename)
+    df_users = pl.read_csv(df_users_filename) if df_users_filename is not None else None
 
-    return calc_metric(df_true, df_pred)
+    return calc_metric(df_true, df_pred, df_users)
 
 
 def resolve_constants(cfg: dict, constants: dict = None) -> dict:
