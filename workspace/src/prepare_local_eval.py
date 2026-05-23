@@ -46,7 +46,6 @@ from loguru import logger
 import os
 from pathlib import Path
 
-from debug_constants import DEBUG_ARGV_PREPARE_LOCAL_EVAL
 from utils import load_config
 import sys
 from stage import BaseStage
@@ -360,7 +359,7 @@ class PrepareLocalEvalStage(BaseStage):
 
 
 if __name__ == "__main__":
-    assert len(sys.argv) == 2, "please provide a pth to yaml config"
+    assert len(sys.argv) == 2, "please provide a path to yaml config"
     cfg_path = sys.argv[1]
     # cfg_path = "/project/workspace/config/data/eval/debug_stage.yml"
 
