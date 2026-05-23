@@ -14,4 +14,5 @@ services:
       - SSH_AUTH_SOCK=/ssh-agent
       - MLFLOW_PORT=5000
       - MLFLOW_ARTIFACTS_DIR=mlflow/artifacts
+      - OPENBLAS_NUM_THREADS=1
     command: python -m mlflow server --port ${MLFLOW_PORT} --host 0.0.0.0 --backend-store-uri /project/mlflow/runs --default-artifact-root /project/${MLFLOW_ARTIFACTS_DIR} & sleep infinity
