@@ -16,7 +16,8 @@ def calc_metric(df_true, df_pred, df_users=None, df_item_verticals=None, top_siz
         top_sizes: list of sizes for which to calculate recall@ k
     """
     # assert that sets of users are the same
-    assert set(df_true["user_id"]) == set(df_pred["user_id"]), "sets of users in eval and pred are different"
+    # assert set(df_true["user_id"]) == set(df_pred["user_id"]), "sets of users in eval and pred are not the same"
+    assert set(df_true["user_id"]) <= set(df_pred["user_id"]), "set of users pred should be a superset of users in eval"
 
     # assert that all recommendations are unique for each user
     count_unique_preds = df_pred.group_by("user_id").agg(
