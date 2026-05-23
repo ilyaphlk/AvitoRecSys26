@@ -1,0 +1,169 @@
+constants:
+  CONTACT_EIDS: [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]
+  # TRAIN_SUBFOLD: no_eval_users  # for local eval, `full` for full submission
+  # EVAL_SUBFOLD: local_events # for local eval, `full` for full submission
+  # MIN_EVENTS_ITEM_ID: int
+  # MIN_CLICKS_ITEM_ID: int
+  # MIN_EVENTS_USER_ID: int
+  # MIN_CLICKS_USER_ID: int
+
+  AGGREGATE_PARTITION_ARGS:
+    - {part: df, args: {key: user_id}}
+    - {part: [user_id], args: {key: user_id}}
+    - {part: [item_id, user_id], args: {key: user_id}}
+    - {part: [item_id], args: {key: user_id}}
+  
+  AGGREGATE_KWARGS:
+    cfg:
+      eager_execution: False
+      join_back: False
+      features:
+        aggregations:
+        - group_by: [user_id]
+          agg:
+            - {alias: events_cnt_by_user_id, col: eid, func: count}
+            - {alias: clicks_cnt_by_user_id, col: eid, func: count_if, condition: {is_in: [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]}}  # count_if  # todo: resolve constants recursively?
+        - group_by: [item_id, user_id]
+          agg:
+            - {alias: events_cnt_by_item_id_user_id, col: eid, func: count}
+            - {alias: clicks_cnt_by_item_id_user_id, col: eid, func: count_if, condition: {is_in: [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]}}  # count_if
+        - group_by: [item_id]
+          agg:
+            - {alias: events_cnt_by_item_id, col: eid, func: count}
+            - {alias: clicks_cnt_by_item_id, col: eid, func: count_if, condition: {is_in: [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]}}  # count_if
+
+#######
+
+aggregate_partitions_20:
+  mlflow_log_artifacts: False
+  in_artifacts:
+    filename_in:
+      - raw/train/$$TRAIN_SUBFOLD$$/part_0[0-1][0-9].*
+      - raw/eval/$$EVAL_SUBFOLD$$/part_0[0-1][0-9].*
+    do_merge: True
+  out_artifacts:
+    filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/
+    partition_args: $AGGREGATE_PARTITION_ARGS
+  kwargs: $AGGREGATE_KWARGS
+    
+aggregate_partitions_40:
+  mlflow_log_artifacts: False
+  in_artifacts:
+    filename_in:
+      - raw/train/$$TRAIN_SUBFOLD$$/part_0[2-3][0-9].*
+      - raw/eval/$$EVAL_SUBFOLD$$/part_0[2-3][0-9].*
+    do_merge: True
+  out_artifacts:
+    filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/
+    partition_args: $AGGREGATE_PARTITION_ARGS
+  kwargs: $AGGREGATE_KWARGS
+
+aggregate_partitions_60:
+  mlflow_log_artifacts: False
+  in_artifacts:
+    filename_in:
+      - raw/train/$$TRAIN_SUBFOLD$$/part_0[4-5][0-9].*
+      - raw/eval/$$EVAL_SUBFOLD$$/part_0[4-5][0-9].*
+    do_merge: True
+  out_artifacts:
+    filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/
+    partition_args: $AGGREGATE_PARTITION_ARGS
+  kwargs: $AGGREGATE_KWARGS
+
+aggregate_partitions_80:
+  mlflow_log_artifacts: False
+  in_artifacts:
+    filename_in:
+      - raw/train/$$TRAIN_SUBFOLD$$/part_0[6-7][0-9].*
+      - raw/eval/$$EVAL_SUBFOLD$$/part_0[6-7][0-9].*
+    do_merge: True
+  out_artifacts:
+    filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/
+    partition_args: $AGGREGATE_PARTITION_ARGS
+  kwargs: $AGGREGATE_KWARGS
+
+aggregate_partitions_100:
+  mlflow_log_artifacts: False
+  in_artifacts:
+    filename_in:
+      - raw/train/$$TRAIN_SUBFOLD$$/part_0[8-9][0-9].*
+      - raw/eval/$$EVAL_SUBFOLD$$/part_0[8-9][0-9].*
+    do_merge: True
+  out_artifacts:
+    filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/
+    partition_args: $AGGREGATE_PARTITION_ARGS
+  kwargs: $AGGREGATE_KWARGS
+
+
+
+make_item_id_blacklist:
+  mlflow_log_artifacts: False
+  in_artifacts:
+    filename_in: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/item_id/part_*.parquet
+    do_merge: True
+  out_artifacts:
+    filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/item_blacklist_shows_$$MIN_EVENTS_ITEM_ID$$_clicks_$$MIN_CLICKS_ITEM_ID$$.parquet
+  kwargs:
+    cfg:
+      join_back: False
+      overwrite_df_in: True  # works only if there is exactly one aggregation key set
+      features:
+        aggregations:
+        - group_by: ["item_id"]
+          agg:
+            - {alias: events_cnt_by_item_id, col: events_cnt_by_item_id, func: sum}
+            - {alias: clicks_cnt_by_item_id, col: clicks_cnt_by_item_id, func: sum}
+      filters:
+        post:
+          reduce_as: any
+          filters:
+            events_cnt_by_item_id: {"<": $MIN_EVENTS_ITEM_ID}
+            clicks_cnt_by_item_id: {"<": $MIN_CLICKS_ITEM_ID}
+
+
+make_user_id_blacklist:
+  mlflow_log_artifacts: False
+  in_artifacts:
+    filename_in: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/user_id/part_*.parquet
+    do_merge: True
+  out_artifacts:
+    filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/user_blacklist_shows_$$MIN_EVENTS_USER_ID$$_clicks_$$MIN_CLICKS_USER_ID$$.parquet
+  kwargs:
+    cfg:
+      join_back: False
+      filters:
+        post:
+          reduce_as: any
+          filters:
+            events_cnt_by_user_id: {"<": $MIN_EVENTS_USER_ID}
+            clicks_cnt_by_user_id: {"<": $MIN_CLICKS_USER_ID}
+
+
+filter_by_blacklists:
+  mlflow_log_artifacts: False
+  in_artifacts:
+    filename_in: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/item_id_user_id/
+    do_merge: True
+    join_tables:
+    - join_key: item_id
+      table_path: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/item_blacklist_shows_$$MIN_EVENTS_ITEM_ID$$_clicks_$$MIN_CLICKS_ITEM_ID$$.parquet
+      join_type: anti
+      join_id: item_id
+    - join_key: user_id
+      table_path: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/user_blacklist_shows_$$MIN_EVENTS_USER_ID$$_clicks_$$MIN_CLICKS_USER_ID$$.parquet
+      join_type: anti
+      join_id: user_id
+    - join_key: item_id
+      table_path: dict/item_features.parquet
+      join_type: left
+      join_id: vertical_id
+  out_artifacts:
+    filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/item_id_user_id/whitelisted/IE_$$MIN_EVENTS_ITEM_ID$$_IC_$$MIN_CLICKS_ITEM_ID$$_UE_$$MIN_EVENTS_USER_ID$$_UC_$$MIN_CLICKS_USER_ID$$/
+    partition_args:
+      - {part: df, args: {key: user_id}}
+  kwargs:
+    eager_execution: False
+    transform_join_tables:
+      vertical_id:  # join_id
+        select:
+          pre: ["item_id", "vertical_id"]

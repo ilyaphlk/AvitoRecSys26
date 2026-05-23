@@ -1,0 +1,80 @@
+constants:
+  USERS_FILTER: min_user
+  ITEMS_FILTER: min_item
+  FOLDS_SET: folds_local_eval_combined
+
+pipeline:
+  experiment_name: filter_tail_data
+  run_name: blacklist_train_$$USERS_FILTER$$_shows_clicks_$$ITEMS_FILTER$$_shows_clicks
+  stages:
+    - stage_name: aggregate_partitions_20
+      config_path: /project/workspace/config/data/features/counters_shows_clicks_multidir_aws_split_agg_20.yml
+      stage_class: DataTransformStage
+      stage_func: process_data
+      constants_path:
+        - /project/workspace/config/data/constants/$$ITEMS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$USERS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$FOLDS_SET$$.yml
+
+    - stage_name: aggregate_partitions_40
+      config_path: /project/workspace/config/data/features/counters_shows_clicks_multidir_aws_split_agg_20.yml
+      stage_class: DataTransformStage
+      stage_func: process_data
+      constants_path:
+        - /project/workspace/config/data/constants/$$ITEMS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$USERS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$FOLDS_SET$$.yml
+
+    - stage_name: aggregate_partitions_60
+      config_path: /project/workspace/config/data/features/counters_shows_clicks_multidir_aws_split_agg_20.yml
+      stage_class: DataTransformStage
+      stage_func: process_data
+      constants_path:
+        - /project/workspace/config/data/constants/$$ITEMS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$USERS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$FOLDS_SET$$.yml
+
+    - stage_name: aggregate_partitions_80
+      config_path: /project/workspace/config/data/features/counters_shows_clicks_multidir_aws_split_agg_20.yml
+      stage_class: DataTransformStage
+      stage_func: process_data
+      constants_path:
+        - /project/workspace/config/data/constants/$$ITEMS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$USERS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$FOLDS_SET$$.yml
+    
+    - stage_name: aggregate_partitions_100
+      config_path: /project/workspace/config/data/features/counters_shows_clicks_multidir_aws_split_agg_20.yml
+      stage_class: DataTransformStage
+      stage_func: process_data
+      constants_path:
+        - /project/workspace/config/data/constants/$$ITEMS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$USERS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$FOLDS_SET$$.yml
+
+    - stage_name: make_item_id_blacklist
+      config_path: /project/workspace/config/data/features/counters_shows_clicks_multidir_aws_split_agg_20.yml
+      stage_class: DataTransformStage
+      stage_func: process_data
+      constants_path:
+        - /project/workspace/config/data/constants/$$ITEMS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$USERS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$FOLDS_SET$$.yml
+
+    - stage_name: make_user_id_blacklist
+      config_path: /project/workspace/config/data/features/counters_shows_clicks_multidir_aws_split_agg_20.yml
+      stage_class: DataTransformStage
+      stage_func: process_data
+      constants_path:
+        - /project/workspace/config/data/constants/$$ITEMS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$USERS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$FOLDS_SET$$.yml
+
+    - stage_name: filter_by_blacklists
+      config_path: /project/workspace/config/data/features/counters_shows_clicks_multidir_aws_split_agg_20.yml
+      stage_class: JoinTablesStage
+      stage_func: join_tables
+      constants_path:
+        - /project/workspace/config/data/constants/$$ITEMS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$USERS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$FOLDS_SET$$.yml
