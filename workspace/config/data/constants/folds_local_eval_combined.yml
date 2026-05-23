@@ -1,0 +1,3 @@
+constants:
+  TRAIN_SUBFOLD: no_eval_users  # local events contain eval users
+  EVAL_SUBFOLD: local_events

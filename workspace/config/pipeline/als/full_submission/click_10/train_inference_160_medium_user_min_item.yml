@@ -1,0 +1,27 @@
+constants:
+  USERS_FILTER: medium_user
+  ITEMS_FILTER: min_item
+  FOLDS_SET: folds_full_submission_combined
+  CLICK_WEIGHT: 10
+
+pipeline:
+  experiment_name: train_als_eval_160
+  run_name: blacklist_train_$$USERS_FILTER$$_shows_clicks_$$ITEMS_FILTER$$_shows_clicks
+  stages:
+    - stage_name: train_als
+      config_path: /project/workspace/config/als/train_template.yml
+      stage_class: ALSTrainStage
+      stage_func: als_train
+      constants_path:
+        - /project/workspace/config/data/constants/$$ITEMS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$USERS_FILTER$$_shows_clicks.yml
+        - /project/workspace/config/data/constants/$$FOLDS_SET$$.yml
+        - /project/workspace/config/data/constants/$$CLICK_WEIGHT$$.yml
+    
+    - stage_name: inference_als
+      config_path: /project/workspace/config/als/inference_check_local_template.yml
+      stage_class: ALSInferenceStage
+      stage_func: als_inference
+      constants_path:
+        - /project/workspace/config/als/constants/top_160.yml
+        - /project/workspace/config/als/constants/full_prod_eval.yml

@@ -1,0 +1,2 @@
+constants:
+  EVAL_USERS: raw/eval/users/*.csv

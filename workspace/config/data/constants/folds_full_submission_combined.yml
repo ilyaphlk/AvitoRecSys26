@@ -1,0 +1,3 @@
+constants:
+  TRAIN_SUBFOLD: full  # local events contain eval users
+  EVAL_SUBFOLD: full

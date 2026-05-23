@@ -1,0 +1,4 @@
+constants:
+  TOP_SIZE: 160
+  BATCH_SIZE: 10000
+  RECALL_TOP_SIZES: [1, 5, 10, 20, 50, 100, 160]
