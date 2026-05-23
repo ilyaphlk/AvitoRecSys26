@@ -11,4 +11,5 @@ services:
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
       - MLFLOW_PORT=6000
       - MLFLOW_ARTIFACTS_DIR=mlflow/artifacts
-    command: python -m mlflow server --port ${MLFLOW_PORT} --host 0.0.0.0 --backend-store-uri sqlite:////project/mlflow.db --default-artifact-root s3://${S3_BUCKET}/${MLFLOW_ARTIFACTS_DIR} & sleep infinity
+    #command: python -m mlflow server --port ${MLFLOW_PORT} --host 0.0.0.0 --backend-store-uri sqlite:////project/mlflow.db --default-artifact-root s3://${S3_BUCKET}/${MLFLOW_ARTIFACTS_DIR} & sleep infinity
+    command: sleep infinity
