@@ -16,7 +16,7 @@ pipeline:
         - /project/workspace/config/data/constants/$$ITEMS_FILTER$$_shows_clicks.yml
         - /project/workspace/config/data/constants/$$USERS_FILTER$$_shows_clicks.yml
         - /project/workspace/config/data/constants/$$FOLDS_SET$$.yml
-        - /project/workspace/config/data/constants/$$CLICK_WEIGHT$$.yml
+        - /project/workspace/config/als/constants/click_weight_$$CLICK_WEIGHT$$.yml
 
     - stage_name: inference_als
       config_path: /project/workspace/config/als/inference_check_local_template.yml
