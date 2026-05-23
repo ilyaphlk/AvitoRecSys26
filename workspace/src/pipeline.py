@@ -7,7 +7,7 @@ import mlflow
 from loguru import logger
 import os
 import check_submission
-import utils
+
 
 STAGES_DICT = {
     "ALSPreprocessStage": als.ALSPreprocessStage,
@@ -29,7 +29,7 @@ FUNCS_DICT = {
     "make_empty_df": transform_data.make_empty_df,
     "prepare_local_eval": prepare_local_eval.prepare_local_eval,
     "join_tables": transform_data.join_tables,
-    "calc_metric": utils.calc_metric,
+    "calc_metric": check_submission.calc_metric,
 }
 
 def make_stage_object(stage_dict):
@@ -59,7 +59,7 @@ def maybe_update_stage_config_from_prev_stages(stage, runs_info):
 def run_pipeline():
     assert len(sys.argv) == 2, "please provide a path to yaml config with pipeline args"
     pipeline_config_path = sys.argv[1]
-    # pipeline_config_path = "/project/workspace/config/pipeline/als_debug.yml"
+    # pipeline_config_path = "/project/workspace/config/pipeline/als/debug/train_inference_160_min_user_min_item.yml"
 
     pipeline_cfg = load_config(pipeline_config_path)["pipeline"]
 
