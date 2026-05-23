@@ -1,0 +1,36 @@
+constants:
+  HIDDEN_DIM: 60
+  CLICK_WEIGHT: 1
+  STEPS: 1
+  EVAL_USERS: dev/raw/eval/users/*.csv
+  # TRAIN_SUBFOLD: no_eval_users
+  # EVAL_SUBFOLD: local_events
+  # MIN_EVENTS_ITEM_ID: 10
+  # MIN_CLICKS_ITEM_ID: 1
+  # MIN_EVENTS_USER_ID: 10
+  # MIN_CLICKS_USER_ID: 2
+
+train_als:
+  in_artifacts:
+    train_data: dev/processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/item_id_user_id/whitelisted/IE_$$MIN_EVENTS_ITEM_ID$$_IC_$$MIN_CLICKS_ITEM_ID$$_UE_$$MIN_EVENTS_USER_ID$$_UC_$$MIN_CLICKS_USER_ID$$/*.parquet
+    eval_users: $EVAL_USERS  # todo configure as const?
+
+  out_artifacts:
+    artifacts_dir: dev/artifacts/als/
+    make_mlflow_artifacts_subdir: true
+
+    model: als_model.als
+    item_id_to_index: item_id_to_index.json
+    user_id_to_index: user_id_to_index.json
+    user_matrix: user_matrix.npz
+    popular_top: popular_top.parquet
+
+  kwargs:
+    steps: $STEPS
+    hidden_dim: $HIDDEN_DIM
+    random_state: 42
+    calculate_training_loss: true
+    show_weight: 1
+    click_weight: $CLICK_WEIGHT
+    make_popular_top: true
+    make_user_matrix: true

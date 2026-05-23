@@ -1,0 +1,81 @@
+constants:
+  TOP_SIZE: 160
+  BATCH_SIZE: 100
+  EVAL_USERS: dev/raw/eval/users/*.csv
+  RECALL_TOP_SIZES: [1, 5, 10, 20, 50, 100, 160]
+
+inference_als:
+  in_artifacts:
+    eval_users: $EVAL_USERS
+
+    get_artifacts_from_stage: train_als  # use to infer artifacts subdir dynamically
+    # artifacts_experiment_name: debug_als_exp  # use to enter subdirs manually
+    # artifacts_run_id: <run_id>
+    artifacts_dir: dev/artifacts/als/
+    model: als_model.als
+    item_id_to_index: item_id_to_index.json
+    user_id_to_index: user_id_to_index.json
+    user_matrix: user_matrix.npz
+    popular_top: popular_top.parquet
+
+  out_artifacts:
+    make_mlflow_artifacts_subdir: true
+    artifacts_dir: dev/artifacts/als/
+    submission: submission.csv
+    submission_w_scores: submission_w_scores.csv
+
+  kwargs:
+    top_size: $TOP_SIZE
+    batch_size: $BATCH_SIZE
+    fallback_strategy: popular
+    filter_already_liked_items: true
+
+check_submission_als:
+  in_artifacts:
+    ground_truth_path: dev/raw/eval/ground_truth/*.csv
+    users_path: dev/raw/eval/users/*.csv
+    items_path: dict/item_features.parquet
+    
+    get_artifacts_from_stage: inference_als  # use to infer artifacts subdir dynamically
+    artifacts_dir: dev/artifacts/als/
+    # artifacts_experiment_name: <exp_id>  # use to enter subdirs manually
+    # artifacts_run_id: <inference_run_id>
+    preds_path: submission_w_scores.csv
+
+  out_artifacts:
+    make_mlflow_artifacts_subdir: true
+    artifacts_dir: dev/artifacts/als/local_full_eval/
+    overall_recall: overall_recall.csv
+    recall_at_k: recall_at_k.csv
+    per_bucket_recall: per_bucket_recall.csv
+    confusion_matrix: confusion_matrix.csv
+    confusion_matrix_pct_by_bucket: confusion_matrix_pct_by_bucket.csv
+    confusion_matrix_pct_by_v_id: confusion_matrix_pct_by_v_id.csv
+  
+  kwargs:
+    top_sizes: $RECALL_TOP_SIZES
+
+check_submission_als_only_local_prod:
+  in_artifacts:
+    ground_truth_path: dev/raw/eval/ground_truth/eval_user_events.csv
+    users_path: dev/raw/eval/users/local_prod_eval.csv
+    items_path: dict/item_features.parquet
+    
+    get_artifacts_from_stage: inference_als  # use to infer artifacts subdir dynamically
+    artifacts_dir: artifacts/als/
+    # artifacts_experiment_name: <exp_id>  # use to enter subdirs manually
+    # artifacts_run_id: <inference_run_id>
+    preds_path: submission_w_scores.csv
+
+  out_artifacts:
+    make_mlflow_artifacts_subdir: true
+    artifacts_dir: dev/artifacts/als/local_prod_eval/
+    overall_recall: overall_recall.csv
+    recall_at_k: recall_at_k.csv
+    per_bucket_recall: per_bucket_recall.csv
+    confusion_matrix: confusion_matrix.csv
+    confusion_matrix_pct_by_bucket: confusion_matrix_pct_by_bucket.csv
+    confusion_matrix_pct_by_v_id: confusion_matrix_pct_by_v_id.csv
+  
+  kwargs:
+    top_sizes: $RECALL_TOP_SIZES
