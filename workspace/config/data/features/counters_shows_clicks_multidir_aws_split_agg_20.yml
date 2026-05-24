@@ -7,11 +7,11 @@ constants:
   # MIN_EVENTS_USER_ID: int
   # MIN_CLICKS_USER_ID: int
 
-  AGGREGATE_PARTITION_ARGS:
-    - {part: df, args: {key: user_id}}
-    - {part: [user_id], args: {key: user_id}}
-    - {part: [item_id, user_id], args: {key: user_id}}
-    - {part: [item_id], args: {key: user_id}}
+  # AGGREGATE_PARTITION_ARGS:
+  #   - {part: df, args: {key: user_id}}
+  #   - {part: [user_id], args: {key: user_id}}
+  #   - {part: [item_id, user_id], args: {key: user_id}}
+  #   - {part: [item_id], args: {key: item_id}}
   
   AGGREGATE_KWARGS:
     cfg:
@@ -43,7 +43,11 @@ aggregate_partitions_20:
     do_merge: True
   out_artifacts:
     filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/
-    partition_args: $AGGREGATE_PARTITION_ARGS
+    partition_args:
+      - {part: df, args: {key: user_id}}
+      - {part: [user_id], args: {key: user_id}}
+      - {part: [item_id, user_id], args: {key: user_id}}
+      - {part: [item_id], args: {key: item_id, prefix: r20_part_}}
   kwargs: $AGGREGATE_KWARGS
     
 aggregate_partitions_40:
@@ -55,7 +59,11 @@ aggregate_partitions_40:
     do_merge: True
   out_artifacts:
     filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/
-    partition_args: $AGGREGATE_PARTITION_ARGS
+    partition_args:
+      - {part: df, args: {key: user_id}}
+      - {part: [user_id], args: {key: user_id}}
+      - {part: [item_id, user_id], args: {key: user_id}}
+      - {part: [item_id], args: {key: item_id, prefix: r40_part_}}
   kwargs: $AGGREGATE_KWARGS
 
 aggregate_partitions_60:
@@ -67,7 +75,11 @@ aggregate_partitions_60:
     do_merge: True
   out_artifacts:
     filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/
-    partition_args: $AGGREGATE_PARTITION_ARGS
+    partition_args:
+      - {part: df, args: {key: user_id}}
+      - {part: [user_id], args: {key: user_id}}
+      - {part: [item_id, user_id], args: {key: user_id}}
+      - {part: [item_id], args: {key: item_id, prefix: r60_part_}}
   kwargs: $AGGREGATE_KWARGS
 
 aggregate_partitions_80:
@@ -79,7 +91,11 @@ aggregate_partitions_80:
     do_merge: True
   out_artifacts:
     filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/
-    partition_args: $AGGREGATE_PARTITION_ARGS
+    partition_args:
+      - {part: df, args: {key: user_id}}
+      - {part: [user_id], args: {key: user_id}}
+      - {part: [item_id, user_id], args: {key: user_id}}
+      - {part: [item_id], args: {key: item_id, prefix: r80_part_}}
   kwargs: $AGGREGATE_KWARGS
 
 aggregate_partitions_100:
@@ -91,7 +107,11 @@ aggregate_partitions_100:
     do_merge: True
   out_artifacts:
     filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/
-    partition_args: $AGGREGATE_PARTITION_ARGS
+    partition_args:
+      - {part: df, args: {key: user_id}}
+      - {part: [user_id], args: {key: user_id}}
+      - {part: [item_id, user_id], args: {key: user_id}}
+      - {part: [item_id], args: {key: item_id, prefix: r100_part_}}
   kwargs: $AGGREGATE_KWARGS
 
 
@@ -99,7 +119,7 @@ aggregate_partitions_100:
 make_item_id_blacklist:
   mlflow_log_artifacts: False
   in_artifacts:
-    filename_in: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/item_id/part_*.parquet
+    filename_in: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/item_id/r*_part_*.parquet
     do_merge: True
   out_artifacts:
     filename_out: processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/item_blacklist_shows_$$MIN_EVENTS_ITEM_ID$$_clicks_$$MIN_CLICKS_ITEM_ID$$.parquet
