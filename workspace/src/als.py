@@ -322,6 +322,20 @@ class ALSPreprocessStage(BaseStage):
         )
 
 
+def file_parts_from_paths(paths_in):
+    if isinstance(paths_in, str):
+        paths_in = [paths_in]
+
+    parts = []
+    for path_in in paths_in:
+        dir_in, part_filenames = parse_path_in(path_in)
+        for part_filename in part_filenames:
+            logger.debug(f"scanning {part_filename} from {dir_in}...")
+            read_path = os.path.join(dir_in, part_filename)
+            parts.append(read_path)
+    return parts
+
+
 class ALSTrainStage(BaseStage):
     def assert_args_in_cfg(self, cfg):
         assert "in_artifacts" in cfg
@@ -342,19 +356,6 @@ class ALSTrainStage(BaseStage):
         return self.cfg["kwargs"]
 
     def load_artifacts(self):
-
-        def file_parts_from_paths(paths_in):
-            if isinstance(paths_in, str):
-                paths_in = [paths_in]
-
-            parts = []
-            for path_in in paths_in:
-                dir_in, part_filenames = parse_path_in(path_in)
-                for part_filename in part_filenames:
-                    logger.debug(f"scanning {part_filename} from {dir_in}...")
-                    read_path = os.path.join(dir_in, part_filename)
-                    parts.append(read_path)
-            return parts
 
         return {
             "df_train": utils.read_parquet(file_parts_from_paths(self.cfg["in_artifacts"]["train_data"])),
@@ -426,7 +427,7 @@ class ALSInferenceStage(BaseStage):
         item_id_to_index, user_id_to_index = {int(k): v for k, v in item_id_to_index.items()}, {int(k): v for k, v in user_id_to_index.items()}
 
         return {
-            "user_to_pred": utils.read_csv(in_artifacts["eval_users"]),
+            "user_to_pred": utils.read_csv(file_parts_from_paths(in_artifacts["eval_users"])),
             "model": utils.load_artifact(in_artifacts["model"]),
             "item_id_to_index": item_id_to_index,
             "user_id_to_index": user_id_to_index,
