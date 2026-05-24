@@ -16,6 +16,7 @@ from stage import BaseStage
 import json
 import mlflow
 import utils
+from transform_data import parse_path_in
 
 
 def ram_report():
@@ -341,9 +342,23 @@ class ALSTrainStage(BaseStage):
         return self.cfg["kwargs"]
 
     def load_artifacts(self):
+
+        def file_parts_from_paths(paths_in):
+            if isinstance(paths_in, str):
+                paths_in = [paths_in]
+
+            parts = []
+            for path_in in paths_in:
+                dir_in, part_filenames = parse_path_in(path_in)
+                for part_filename in part_filenames:
+                    logger.debug(f"scanning {part_filename} from {dir_in}...")
+                    read_path = os.path.join(dir_in, part_filename)
+                    parts.append(read_path)
+            return parts
+
         return {
-            "df_train": utils.read_parquet(self.cfg["in_artifacts"]["train_data"]),
-            "user_to_pred": utils.read_csv(self.cfg["in_artifacts"]["eval_users"]),
+            "df_train": utils.read_parquet(file_parts_from_paths(self.cfg["in_artifacts"]["train_data"])),
+            "user_to_pred": utils.read_csv(file_parts_from_paths(self.cfg["in_artifacts"]["eval_users"])),
         }
 
     def write_artifacts(self, run_result):
