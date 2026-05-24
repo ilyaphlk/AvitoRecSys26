@@ -59,7 +59,7 @@ def maybe_update_stage_config_from_prev_stages(stage, runs_info):
 def run_pipeline():
     assert len(sys.argv) == 2, "please provide a path to yaml config with pipeline args"
     pipeline_config_path = sys.argv[1]
-    # pipeline_config_path = "/project/workspace/config/pipeline/als/debug/train_inference_160_min_user_min_item.yml"
+    # pipeline_config_path = "/project/workspace/config/pipeline/als/local_eval/click_10/train_inference_160_min_user_min_item.yml"
 
     pipeline_cfg = load_config(pipeline_config_path)["pipeline"]
 

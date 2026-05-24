@@ -159,6 +159,9 @@ def inference(
     user4pred_als_idx = np.array([user_id_to_index[i] for i in user_to_pred if i in user_id_to_index])
     user4pred_fallback = np.array([i for i in user_to_pred if i not in user_id_to_index])
 
+    logger.debug(f"users_pred_by_algo_cnt: {len(user4pred_als_idx)}")
+    logger.debug(f"users_pred_by_fallback_cnt: {len(user4pred_fallback)}")
+
     mlflow.log_param("users_pred_by_algo_cnt", len(user4pred_als_idx))
     mlflow.log_param("users_pred_by_algo_pct", len(user4pred_als_idx) / (len(user4pred_als_idx) + len(user4pred_fallback)))
     if fallback_strategy is not None:
@@ -424,7 +427,7 @@ class ALSInferenceStage(BaseStage):
 
         item_id_to_index = utils.load_artifact(in_artifacts["item_id_to_index"])
         user_id_to_index = utils.load_artifact(in_artifacts["user_id_to_index"])
-        item_id_to_index, user_id_to_index = {int(k): v for k, v in item_id_to_index.items()}, {int(k): v for k, v in user_id_to_index.items()}
+        item_id_to_index, user_id_to_index = {int(k): int(v) for k, v in item_id_to_index.items()}, {int(k): int(v) for k, v in user_id_to_index.items()}
 
         return {
             "user_to_pred": utils.read_csv(file_parts_from_paths(in_artifacts["eval_users"])),

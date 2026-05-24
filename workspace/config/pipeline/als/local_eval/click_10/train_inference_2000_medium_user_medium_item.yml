@@ -1,11 +1,11 @@
 constants:
-  USERS_FILTER: min_user
+  USERS_FILTER: medium_user
   ITEMS_FILTER: medium_item
   FOLDS_SET: folds_local_eval_combined
   CLICK_WEIGHT: 10
 
 pipeline:
-  experiment_name: train_als_eval_160
+  experiment_name: train_als_eval_2000
   run_name: blacklist_train_$$USERS_FILTER$$_shows_clicks_$$ITEMS_FILTER$$_shows_clicks
   stages:
     - stage_name: train_als
@@ -23,7 +23,7 @@ pipeline:
       stage_class: ALSInferenceStage
       stage_func: als_inference
       constants_path:
-        - /project/workspace/config/als/constants/top_160.yml
+        - /project/workspace/config/als/constants/top_2000.yml
         - /project/workspace/config/als/constants/full_local_eval.yml
 
     - stage_name: check_submission_als
@@ -31,7 +31,7 @@ pipeline:
       stage_class: CheckSubmissionStage
       stage_func: calc_metric
       constants_path:
-        - /project/workspace/config/als/constants/top_160.yml
+        - /project/workspace/config/als/constants/top_2000.yml
         - /project/workspace/config/als/constants/full_local_eval.yml
 
     # - stage_name: check_submission_als_only_local_prod
@@ -39,5 +39,5 @@ pipeline:
     #   stage_class: CheckSubmissionStage
     #   stage_func: calc_metric
     #   constants_path:
-    #     - /project/workspace/config/als/constants/top_160.yml
+    #     - /project/workspace/config/als/constants/top_2000.yml
     #     - /project/workspace/config/als/constants/full_local_eval.yml

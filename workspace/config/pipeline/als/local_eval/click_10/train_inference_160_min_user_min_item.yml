@@ -34,10 +34,10 @@ pipeline:
         - /project/workspace/config/als/constants/top_160.yml
         - /project/workspace/config/als/constants/full_local_eval.yml
 
-    - stage_name: check_submission_als_only_local_prod
-      config_path: /project/workspace/config/als/inference_check_local_template.yml
-      stage_class: CheckSubmissionStage
-      stage_func: calc_metric
-      constants_path:
-        - /project/workspace/config/als/constants/top_160.yml
-        - /project/workspace/config/als/constants/full_local_eval.yml
+    # - stage_name: check_submission_als_only_local_prod
+    #   config_path: /project/workspace/config/als/inference_check_local_template.yml
+    #   stage_class: CheckSubmissionStage
+    #   stage_func: calc_metric
+    #   constants_path:
+    #     - /project/workspace/config/als/constants/top_160.yml
+    #     - /project/workspace/config/als/constants/full_local_eval.yml

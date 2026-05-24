@@ -1,7 +1,7 @@
 constants:
   HIDDEN_DIM: 60
   CLICK_WEIGHT: 1
-  STEPS: 20
+  STEPS: 10
   EVAL_USERS: raw/eval/users/*.csv
   # TRAIN_SUBFOLD: no_eval_users
   # EVAL_SUBFOLD: local_events
@@ -30,7 +30,7 @@ train_als:
     hidden_dim: $HIDDEN_DIM
     random_state: 42
     calculate_training_loss: true
-    show_weight: 1
+    show_weight: 0
     click_weight: $CLICK_WEIGHT
     make_popular_top: true
     make_user_matrix: true
