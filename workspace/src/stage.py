@@ -12,13 +12,13 @@ class StageStatus(Enum):
     FAILED = 2
 
 class BaseStage:
-    def __init__(self, cfg, func, run_name=None, run_name_suffix=None):
+    def __init__(self, cfg, func=None, run_name=None, run_name_suffix=None):
         """
             `cfg` - config object
             `func` - callable function, returns a result which is then written as artifacts to disk
         """
         self.cfg = cfg
-        self.func = func
+        self.func = func if func is not None else self._func
         self.run_name = run_name if run_name is not None else self.__class__.__name__
         self.run_name = self.run_name + run_name_suffix if run_name_suffix is not None else self.run_name
         self.kwargs = self.parse_kwargs()
@@ -74,6 +74,9 @@ class BaseStage:
                 fp = os.path.join(fp, "placeholder")
             p = Path(utils.LOCAL_DATA_DIR, artifacts_dir, fp)
             p.parent.mkdir(parents=True, exist_ok=True)
+
+    def _func(*args, **kwargs):
+        raise NotImplementedError(f"{self.__class__.__name__} must implement _func")
     
     def run(self):
         with mlflow.start_run(run_name=self.run_name, nested=True):
