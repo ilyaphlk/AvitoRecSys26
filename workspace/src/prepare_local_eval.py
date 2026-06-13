@@ -357,6 +357,9 @@ class PrepareLocalEvalStage(BaseStage):
             write_user_events("eval_user_events")
             write_user_events("other_user_events")
 
+    def _func(self, *args, **kwargs):
+        return prepare_local_eval(*args, **kwargs)
+
 
 if __name__ == "__main__":
     assert len(sys.argv) == 2, "please provide a path to yaml config"

@@ -317,6 +317,9 @@ class DataTransformStage(BaseStage):
     def parse_kwargs(self):
         return self.cfg["kwargs"]
 
+    def _func(self, *args, **kwargs):
+        return process_data(*args, **kwargs)
+
 def maybe_collect(df, eager=False):
     return df.collect() if eager and isinstance(df, pl.LazyFrame) else df
 
@@ -408,10 +411,12 @@ class JoinTablesStage(BaseStage):
     def parse_kwargs(self):
         return self.cfg["kwargs"]
 
+    def _func(self, *args, **kwargs):
+        return join_tables(*args, **kwargs)
 
 
 class SequentialStage(BaseStage):
-    def __init__(self, cfg, stage_class, func, run_name=None):
+    def __init__(self, cfg, stage_class, func=None, run_name=None):
         """
             `cfg` - config object
             `func` - callable function, returns a result which is then written as artifacts to disk
@@ -484,6 +489,10 @@ class MakeAccumStage(BaseStage):
         super().write_artifacts(run_result)
         path_out = self.cfg["out_artifacts"]["filename_accum"]
         utils.sink_parquet(run_result, path_out, remove_local=self.remove_local, log_artifact=self.log_artifacts)
+
+    def _func(self, *args, **kwargs):
+        return make_empty_df(*args, **kwargs)
+
 
 def test_aggregate_combine():
     preprocess_config_path = "/project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml"

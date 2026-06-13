@@ -324,6 +324,9 @@ class ALSPreprocessStage(BaseStage):
             log_artifact=self.log_artifacts
         )
 
+    def _func(self, *args, **kwargs):
+        return make_train(*args, **kwargs)
+
 
 def file_parts_from_paths(paths_in):
     if isinstance(paths_in, str):
@@ -396,6 +399,9 @@ class ALSTrainStage(BaseStage):
         
         if self.cfg["kwargs"].get("make_user_matrix", False):
             utils.save_artifact(run_result.user_matrix, out_artifacts["user_matrix"])
+
+    def _func(self, *args, **kwargs):
+        return train(*args, **kwargs)
 
 
 class ALSInferenceStage(BaseStage):
@@ -470,6 +476,9 @@ class ALSInferenceStage(BaseStage):
             remove_local=self.remove_local,
             log_artifact=self.log_artifacts
         )
+
+    def _func(self, *args, **kwargs):
+        return inference(*args, **kwargs)
 
 
 

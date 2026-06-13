@@ -665,6 +665,9 @@ class SASRecPreprocessStage(BaseStage):
             utils.sink_parquet(result.popular_top, out["popular_top"],
                                remove_local=self.remove_local, log_artifact=self.log_artifacts)
 
+    def _func(self, *args, **kwargs):
+        return preprocess(*args, **kwargs)
+
 
 class SASRecTrainStage(BaseStage):
     def assert_args_in_cfg(self, cfg):
@@ -704,6 +707,9 @@ class SASRecTrainStage(BaseStage):
         }
         utils.save_artifact(checkpoint, out["model"],
                             remove_local=self.remove_local, log_artifact=self.log_artifacts)
+
+    def _func(self, *args, **kwargs):
+        return train(*args, **kwargs)
 
 
 class SASRecInferenceStage(BaseStage):
@@ -764,6 +770,9 @@ class SASRecInferenceStage(BaseStage):
             remove_local=self.remove_local,
             log_artifact=self.log_artifacts,
         )
+
+    def _func(self, *args, **kwargs):
+        return inference(*args, **kwargs)
 
 
 # ------------------------------------------------------------------------------

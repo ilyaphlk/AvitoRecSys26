@@ -75,7 +75,7 @@ class BaseStage:
             p = Path(utils.LOCAL_DATA_DIR, artifacts_dir, fp)
             p.parent.mkdir(parents=True, exist_ok=True)
 
-    def _func(*args, **kwargs):
+    def _func(self, *args, **kwargs):
         raise NotImplementedError(f"{self.__class__.__name__} must implement _func")
     
     def run(self):

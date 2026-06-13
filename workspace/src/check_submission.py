@@ -107,7 +107,6 @@ def check_submission(df_true_filename, df_pred_filename, df_users_filename=None,
     return calc_metric(df_true, df_pred, df_users, df_item_verticals, top_sizes)
 
 
-
 class CheckSubmissionStage(BaseStage):
     def assert_args_in_cfg(self, cfg):
         assert "in_artifacts" in cfg
@@ -178,6 +177,9 @@ class CheckSubmissionStage(BaseStage):
                 remove_local=self.remove_local,
                 log_artifact=self.log_artifacts,
             )
+
+    def _func(self, *args, **kwargs):
+        return check_submission(*args, **kwargs)
 
 
 if __name__ == "__main__":
