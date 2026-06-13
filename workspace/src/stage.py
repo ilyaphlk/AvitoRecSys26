@@ -31,13 +31,13 @@ class BaseStage:
         """
             assert that all required args are in the cfg
         """
-        raise NotImplementedError
+        raise NotImplementedError(f"{self.__class__.__name__} must implement assert_args_in_cfg")
     
     def parse_kwargs(self):
         """
             parse function kwargs from cfg
         """
-        raise NotImplementedError
+        raise NotImplementedError(f"{self.__class__.__name__} must implement parse_kwargs")
 
     def update_cfg(self, new_part: dict[str: Any], ignore_on_assert_failure=False):
         new_cfg = utils.deep_merge(self.cfg, new_part)
@@ -59,7 +59,7 @@ class BaseStage:
         """
             load artifacts needed for running from disk, return as dict
         """
-        raise NotImplementedError
+        raise NotImplementedError(f"{self.__class__.__name__} must implement load_artifacts")
     
     def write_artifacts(self, run_result):
         """
