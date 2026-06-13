@@ -21,27 +21,15 @@ STAGES_DICT = {
     "CheckSubmissionStage": check_submission.CheckSubmissionStage,
 }
 
-FUNCS_DICT = {
-    "als_make_train": als.make_train,
-    "als_train": als.train,
-    "als_inference": als.inference,
-    "process_data": transform_data.process_data,
-    "make_empty_df": transform_data.make_empty_df,
-    "prepare_local_eval": prepare_local_eval.prepare_local_eval,
-    "join_tables": transform_data.join_tables,
-    "calc_metric": check_submission.calc_metric,
-}
-
 def make_stage_object(stage_dict):
     cfg_path = stage_dict["config_path"]
     constants_path = stage_dict.get("constants_path", None)
     cfg = load_config(cfg_path, constants_path)[stage_dict["stage_name"]]
     stage_class = STAGES_DICT[stage_dict["stage_class"]]
-    stage_func = FUNCS_DICT[stage_dict["stage_func"]]
     child_stage_class = STAGES_DICT[stage_dict["child_stage_class"]] if "child_stage_class" in stage_dict else None
     if child_stage_class is not None:
-        return stage_class(cfg, child_stage_class, stage_func)
-    return stage_class(cfg, stage_func)
+        return stage_class(cfg, child_stage_class)
+    return stage_class(cfg)
 
 def maybe_update_stage_config_from_prev_stages(stage, runs_info):
     cfg = stage["object"].cfg
