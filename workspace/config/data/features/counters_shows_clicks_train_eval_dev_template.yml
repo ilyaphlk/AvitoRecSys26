@@ -1,7 +1,5 @@
 constants:
   CONTACT_EIDS: [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]
-  TRAIN_SUBFOLD: no_eval_users  # so we can join 
-  EVAL_SUBFOLD: local_events
   # MIN_EVENTS_ITEM_ID: int
   # MIN_CLICKS_ITEM_ID: int
   # MIN_EVENTS_USER_ID: int
@@ -14,8 +12,8 @@ aggregate_partitions:
   mlflow_log_artifacts: False
   in_artifacts:
     filename_in:
-      - dev/raw/train/$$TRAIN_SUBFOLD$$/part_000.pq
-      - dev/raw/eval/$$EVAL_SUBFOLD$$/part_000.pq  # in aws config use train/filter_dt and eval_user_events.pq
+      - dev/raw/train/$$TRAIN_SUBFOLD$$/
+      - dev/raw/eval/$$EVAL_SUBFOLD$$/part_*.pq  # in aws config use only *.pq to read eval_user_events as well
     do_merge: True
   out_artifacts:
     filename_out: dev/processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/
@@ -96,22 +94,12 @@ filter_by_blacklists:
     - join_key: item_id
       table_path: dev/processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/item_blacklist_shows_$$MIN_EVENTS_ITEM_ID$$_clicks_$$MIN_CLICKS_ITEM_ID$$.parquet
       join_type: anti
-      join_id: item_id
     - join_key: user_id
       table_path: dev/processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/user_blacklist_shows_$$MIN_EVENTS_USER_ID$$_clicks_$$MIN_CLICKS_USER_ID$$.parquet
       join_type: anti
-      join_id: user_id
-    - join_key: item_id
-      table_path: dict/item_features.parquet
-      join_type: left
-      join_id: vertical_id
   out_artifacts:
     filename_out: dev/processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/item_id_user_id/whitelisted/IE_$$MIN_EVENTS_ITEM_ID$$_IC_$$MIN_CLICKS_ITEM_ID$$_UE_$$MIN_EVENTS_USER_ID$$_UC_$$MIN_CLICKS_USER_ID$$/
     partition_args:
-      - {part: df, args: {key: user_id}}
+      - {part: df, key: user_id}
   kwargs:
     eager_execution: False
-    transform_join_tables:
-      vertical_id:  # join_id
-        select:
-          pre: ["item_id", "vertical_id"]

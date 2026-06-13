@@ -1,0 +1,10 @@
+pipeline:
+  experiment_name: prepare_local_eval
+  run_name: make_item_stats
+  stages:
+    - stage_name: aggregate
+      config_path: /project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml
+      stage_class: DataTransformStage
+    - stage_name: combine
+      config_path: /project/workspace/config/data/eval/unique_users_cnt_by_item_id.yml
+      stage_class: DataTransformStage

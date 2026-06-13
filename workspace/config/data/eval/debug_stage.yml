@@ -1,0 +1,22 @@
+prepare_eval:
+  in_artifacts:
+    filename_in: dev/raw/
+    item_features_path: dict/item_features.parquet
+    contact_eids_path: dict/contact_eids.csv
+  out_artifacts:
+    filename_out: dev/processed/eval/
+  kwargs:
+    synth_threshold: "2026-04-08T00:00:00"
+    write_train_part: true
+    items_blacklist_path: processed/unique_users_cnt_by_item_id/combined_blacklist.parquet
+    vertical_quotas:
+      v0: 800
+      v2: 40
+      v3: 40
+      v4: 10
+      v57: 20
+      h0: 500
+      h1: 500
+      h2: 500
+      h3: 500
+      h4: 500

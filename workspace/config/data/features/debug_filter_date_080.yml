@@ -1,0 +1,7 @@
+data:
+  files:
+    in: data/raw/part_080.parquet
+    out: data/dev/processed/part_080_filter_dt.parquet
+    dict: data/dict
+  filters:
+    date_thr: {"<": "2026-04-08T00:00:00"}

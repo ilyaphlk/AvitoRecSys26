@@ -1,0 +1,11 @@
+pipeline:
+  experiment_name: debug_als_exp
+  run_name: debug_als_inference_only
+  stages:
+    - stage_name: inference_als
+      config_path: /project/workspace/config/inference/als/debug_in_artifacts_from_stage.yml
+      stage_class: ALSInferenceStage
+      stage_func: als_inference
+      constants_path:
+        - /project/workspace/config/data/constants/min_item_shows_clicks.yml
+        - /project/workspace/config/data/constants/min_user_shows_clicks.yml

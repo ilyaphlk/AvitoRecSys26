@@ -24,8 +24,8 @@ aggregates_filter_pre_post:
             post:
               reduce_as: any
               filters:
-                events_cnt_by_user_id: {"<": 10}
-                clicks_cnt_by_user_id: {"<": 20}
+                events_cnt_by_user_id: {">": 10}
+                clicks_cnt_by_user_id: {"<": 5}
 
       filters:
         pre:  # filter df before making any aggregations
@@ -34,7 +34,7 @@ aggregates_filter_pre_post:
             user_id: {"<": 10000}
             timestamp: {">": 1775347200000}
         post:
-          reduce_as: any  # cold start
+          reduce_as: all  # cold start
           filters:
             events_cnt_by_user_id: {"<": 20}
             clicks_cnt_by_user_id: {"<": 10}

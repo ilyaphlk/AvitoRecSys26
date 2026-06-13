@@ -6,14 +6,16 @@ constants:
   MIN_EVENTS_USER_ID: 10
   MIN_CLICKS_USER_ID: 2
 
-training:
+train_als:
   in_artifacts:
     train_data: dev/processed/train_$$TRAIN_SUBFOLD$$_eval_$$EVAL_SUBFOLD$$/shows_clicks_stats/item_id_user_id/whitelisted/IE_$$MIN_EVENTS_ITEM_ID$$_IC_$$MIN_CLICKS_ITEM_ID$$_UE_$$MIN_EVENTS_USER_ID$$_UC_$$MIN_CLICKS_USER_ID$$/*.parquet
     eval_users: dev/raw/eval/users/part_000.csv
 
   out_artifacts:
     artifacts_dir: dev/artifacts/als/IE_$$MIN_EVENTS_ITEM_ID$$_IC_$$MIN_CLICKS_ITEM_ID$$_UE_$$MIN_EVENTS_USER_ID$$_UC_$$MIN_CLICKS_USER_ID$$/
-    model: als_model.npz
+    make_mlflow_artifacts_subdir: true
+
+    model: als_model.als
     item_id_to_index: item_id_to_index.json
     user_id_to_index: user_id_to_index.json
     user_matrix: user_matrix.npz

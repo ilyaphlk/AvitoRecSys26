@@ -7,7 +7,7 @@ pipeline:
   experiment_name: filter_tail_data
   run_name: blacklist_train_$$USERS_FILTER$$_shows_clicks_$$ITEMS_FILTER$$_shows_clicks
   stages:
-    - stage_name: aggregate_partitions
+    - stage_name: aggregate_partitions_20
       config_path: /project/workspace/config/data/features/counters_shows_clicks_multidir_aws.yml
       stage_class: DataTransformStage
       stage_func: process_data

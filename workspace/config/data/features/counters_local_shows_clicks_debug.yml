@@ -1,0 +1,102 @@
+constants:
+  CONTACT_EIDS: [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]
+
+aggregate_partitions:
+  in_artifacts:
+    filename_in: dev/processed/raw_filter_dt/
+  out_artifacts:
+    filename_out: dev/processed/local_shows_clicks/
+  kwargs:
+    cfg:
+      eager_execution: False
+      join_back: False
+      features:
+        aggregations:
+        # - group_by: [user_id]
+        #   agg:
+        #     - {alias: events_cnt_by_user_id, col: eid, func: count}
+        #     - {alias: clicks_cnt_by_user_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
+        # - group_by: [item_id, user_id]
+        #   agg:
+        #     - {alias: events_cnt_by_item_id_user_id, col: eid, func: count}
+        #     - {alias: clicks_cnt_by_item_id_user_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
+        - group_by: [item_id]
+          agg:
+            - {alias: events_cnt_by_item_id, col: eid, func: count}
+            - {alias: clicks_cnt_by_item_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
+
+# make item blacklist:
+
+make_accum_item_id:
+  out_artifacts:
+    filename_accum: dev/processed/local_shows_clicks/item_blacklist_shows_50_clicks_5.parquet
+  kwargs:
+    schema:
+      item_id: UInt32
+      events_cnt_by_item_id: UInt32
+      clicks_cnt_by_item_id: UInt32
+
+
+make_item_id_blacklist_sequential:
+  in_artifacts:
+    filename_in: dev/processed/local_shows_clicks/item_id/
+    filename_accum: dev/processed/local_shows_clicks/item_blacklist_shows_50_clicks_5.parquet
+  out_artifacts:
+    filename_out: dev/processed/local_shows_clicks/item_blacklist_shows_50_clicks_5.parquet
+  kwargs:
+    cfg:
+      join_back: False
+      incremental_accum: True
+      eager_execution: True
+      append_keys_to_filename: False
+      features:
+        aggregations:
+        - group_by: ["item_id"]
+          agg:
+            - {alias: events_cnt_by_item_id, col: events_cnt_by_item_id, func: sum}
+            - {alias: clicks_cnt_by_item_id, col: clicks_cnt_by_item_id, func: sum}
+      filters:
+        events_cnt_by_item_id: {"<": 50}
+        clicks_cnt_by_item_id: {"<": 5}
+
+# make users blacklist (per user partitions are valid, so no additional aggregation here)
+
+make_accum_user_id:
+  out_artifacts:
+    filename_accum: dev/processed/local_shows_clicks/user_blacklist_shows_100_clicks_20.parquet
+  kwargs:
+    schema:
+      user_id: UInt32
+      events_cnt_by_user_id: UInt32
+      clicks_cnt_by_user_id: UInt32
+
+make_user_id_blacklist_sequential:
+  in_artifacts:
+    filename_in: dev/processed/local_shows_clicks/user_id/
+    filename_accum: dev/processed/local_shows_clicks/user_blacklist_shows_100_clicks_20.parquet
+  out_artifacts:
+    filename_out: dev/processed/local_shows_clicks/user_blacklist_shows_100_clicks_20.parquet
+  kwargs:
+    cfg:
+      join_back: False
+      incremental_accum: True
+      eager_execution: True
+      append_keys_to_filename: False
+      filters:
+        events_cnt_by_user_id: {"<": 100}
+        clicks_cnt_by_user_id: {"<": 20}
+
+filter_by_blacklists:
+  in_artifacts:
+    filename_in: dev/processed/local_shows_clicks/item_id_user_id/
+    join_tables:
+    - join_key: item_id
+      name: dev/processed/local_shows_clicks/item_blacklist_shows_10_clicks_1.parquet
+      join_type: anti
+    - join_key: user_id
+      name: dev/processed/local_shows_clicks/user_blacklist_shows_10_clicks_2.parquet
+      join_type: anti
+  out_artifacts:
+    filename_out: dev/processed/local_shows_clicks/item_id_user_id/whitelisted_debug/by_min_limits/
+  kwargs:
+    eager_execution: False

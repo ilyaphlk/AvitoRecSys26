@@ -1,0 +1,32 @@
+constants:
+  TRAIN_SUBFOLD: no_eval_users
+  EVAL_SUBFOLD: local_events
+  # MIN_EVENTS_ITEM_ID: 10
+  # MIN_CLICKS_ITEM_ID: 1
+  # MIN_EVENTS_USER_ID: 10
+  # MIN_CLICKS_USER_ID: 2
+
+check_submission_als:
+  in_artifacts:
+    ground_truth_path: dev/raw/eval/ground_truth/part_000.csv
+    users_path: dev/raw/eval/users/part_000.csv
+    items_path: dict/item_features.parquet
+    
+    get_artifacts_from_stage: inference_als  # use to infer artifacts subdir dynamically
+    artifacts_dir: dev/artifacts/als/IE_$$MIN_EVENTS_ITEM_ID$$_IC_$$MIN_CLICKS_ITEM_ID$$_UE_$$MIN_EVENTS_USER_ID$$_UC_$$MIN_CLICKS_USER_ID$$/
+    # artifacts_experiment_name: <exp_id>  # use to enter subdirs manually
+    # artifacts_run_id: <inference_run_id>
+    preds_path: submission_w_scores.csv
+
+  out_artifacts:
+    make_mlflow_artifacts_subdir: true
+    artifacts_dir: dev/artifacts/als/debug/IE_$$MIN_EVENTS_ITEM_ID$$_IC_$$MIN_CLICKS_ITEM_ID$$_UE_$$MIN_EVENTS_USER_ID$$_UC_$$MIN_CLICKS_USER_ID$$/
+    overall_recall: overall_recall.csv
+    recall_at_k: recall_at_k.csv
+    per_bucket_recall: per_bucket_recall.csv
+    confusion_matrix: confusion_matrix.csv
+    confusion_matrix_pct_by_bucket: confusion_matrix_pct_by_bucket.csv
+    confusion_matrix_pct_by_v_id: confusion_matrix_pct_by_v_id.csv
+
+  kwargs:
+    top_sizes: [1, 5, 10, 20, 50, 100, 160]

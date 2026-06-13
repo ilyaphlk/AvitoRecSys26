@@ -1,7 +1,9 @@
 constants:
   CONTACT_EIDS: [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]
 
+
 aggregate_partitions:
+  mlflow_log_artifacts: False
   in_artifacts:
     filename_in: dev/processed/raw_filter_dt/
     do_merge: True
@@ -22,33 +24,23 @@ aggregate_partitions:
           agg:
             - {alias: events_cnt_by_user_id, col: eid, func: count}
             - {alias: clicks_cnt_by_user_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
-        #- group_by: [item_id, user_id]
-        #  agg:
-        #    - {alias: events_cnt_by_item_id_user_id, col: eid, func: count}
-        #    - {alias: clicks_cnt_by_item_id_user_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
-        #- group_by: [item_id]
-        #  agg:
-        #    - {alias: events_cnt_by_item_id, col: eid, func: count}
-        #    - {alias: clicks_cnt_by_item_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
-
-# make item blacklist:
-
-make_accum_item_id:
-  out_artifacts:
-    filename_accum: dev/processed/local_shows_clicks_do_partition/item_blacklist_shows_10_clicks_1.parquet
-  kwargs:
-    schema:
-      item_id: UInt32
-      events_cnt_by_item_id: UInt32
-      clicks_cnt_by_item_id: UInt32
+        - group_by: [item_id, user_id]
+          agg:
+            - {alias: events_cnt_by_item_id_user_id, col: eid, func: count}
+            - {alias: clicks_cnt_by_item_id_user_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
+        - group_by: [item_id]
+          agg:
+            - {alias: events_cnt_by_item_id, col: eid, func: count}
+            - {alias: clicks_cnt_by_item_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
 
 
 make_item_id_blacklist:
+  mlflow_log_artifacts: False
   in_artifacts:
     filename_in: dev/processed/local_shows_clicks_do_partition/item_id/part_*.parquet
     do_merge: True
   out_artifacts:
-    filename_out: dev/processed/local_shows_clicks_do_partition/item_blacklist_shows_10_clicks_1.parquet
+    filename_out: dev/processed/local_shows_clicks_do_partition/item_blacklist_shows_$$MIN_EVENTS_ITEM_ID$$_clicks_$$MIN_CLICKS_ITEM_ID$$.parquet
   kwargs:
     cfg:
       join_back: False
@@ -60,43 +52,36 @@ make_item_id_blacklist:
             - {alias: events_cnt_by_item_id, col: events_cnt_by_item_id, func: sum}
             - {alias: clicks_cnt_by_item_id, col: clicks_cnt_by_item_id, func: sum}
       filters:
-        events_cnt_by_item_id: {"<": 10}
-        clicks_cnt_by_item_id: {"<": 1}
+        events_cnt_by_item_id: {"<": $MIN_EVENTS_ITEM_ID}
+        clicks_cnt_by_item_id: {"<": $MIN_CLICKS_ITEM_ID}
 
-# make users blacklist (per user partitions are valid, so no additional aggregation here)
-
-make_accum_user_id:
-  out_artifacts:
-    filename_accum: dev/processed/local_shows_clicks_do_partition/user_blacklist_shows_10_clicks_2.parquet
-  kwargs:
-    schema:
-      user_id: UInt32
-      events_cnt_by_user_id: UInt32
-      clicks_cnt_by_user_id: UInt32
 
 make_user_id_blacklist:
+  mlflow_log_artifacts: False
   in_artifacts:
     filename_in: dev/processed/local_shows_clicks_do_partition/user_id/part_*.parquet
     do_merge: True
   out_artifacts:
-    filename_out: dev/processed/local_shows_clicks_do_partition/user_blacklist_shows_10_clicks_2.parquet
+    filename_out: dev/processed/local_shows_clicks_do_partition/user_blacklist_shows_$$MIN_SHOWS_USER_ID$$_clicks_$$MIN_CLICKS_USER_ID$$.parquet
   kwargs:
     cfg:
       join_back: False
       filters:
-        events_cnt_by_user_id: {"<": 10}
-        clicks_cnt_by_user_id: {"<": 2}
+        events_cnt_by_user_id: {"<": $MIN_EVENTS_USER_ID}
+        clicks_cnt_by_user_id: {"<": $MIN_CLICKS_USER_ID}
+
 
 filter_by_blacklists:
+  mlflow_log_artifacts: False
   in_artifacts:
     filename_in: dev/processed/local_shows_clicks_do_partition/item_id_user_id/
     do_merge: True
     join_tables:
-    # - join_key: item_id
-    #   name: dev/processed/local_shows_clicks_do_partition/item_blacklist_shows_10_clicks_1.parquet
-    #   join_type: anti
+    - join_key: item_id
+      name: dev/processed/local_shows_clicks_do_partition/item_blacklist_shows_$$MIN_EVENTS_ITEM_ID$$_clicks_$$MIN_CLICKS_ITEM_ID$$.parquet
+      join_type: anti
     - join_key: user_id
-      name: dev/processed/local_shows_clicks_do_partition/user_blacklist_shows_10_clicks_2.parquet
+      name: dev/processed/local_shows_clicks_do_partition/user_blacklist_shows_$$MIN_EVENTS_USER_ID$$_clicks_$$MIN_CLICKS_USER_ID$$.parquet
       join_type: anti
   out_artifacts:
     filename_out: processed/local_shows_clicks_do_partition/item_id_user_id/whitelisted/by_min_limits/

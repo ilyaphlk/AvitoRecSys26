@@ -1,0 +1,6 @@
+preprocessing:
+  in_artifacts:
+    train_events_path: data/dev/processed/train_filter_pop_10_hist_10/part_099.parquet
+    eval_users_events_path: data/dev/dict/eval_user_events_pop_10_hist_10.pq
+  out_artifacts:
+    preprocessed_df_path: data/dev/processed/train_filter_pop_10_hist_10_debug/part_099_and_eval_user_events.parquet

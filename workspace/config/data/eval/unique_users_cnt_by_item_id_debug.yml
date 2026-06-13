@@ -1,0 +1,45 @@
+constants:
+  CONTACT_EIDS: [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]
+
+aggregate:
+  in_artifacts:
+    filename_in: dev/raw/
+  out_artifacts:
+    filename_out: dev/processed/unique_users_cnt_by_item_id_debug/
+  kwargs:
+    cfg:
+      eager_execution: False
+      join_back: False
+      features:
+        aggregations:
+        - group_by: [item_id]
+          agg:
+            - {alias: unique_users_cnt_by_item_id, col: user_id, func: n_unique}
+
+make_accum:
+  out_artifacts:
+    filename_accum: dev/processed/unique_users_cnt_by_item_id_debug/combined_blacklist.parquet
+  kwargs:
+    schema:
+      item_id: UInt32
+      unique_users_cnt_by_item_id: UInt32
+
+combine:
+  in_artifacts:
+    filename_in: dev/processed/unique_users_cnt_by_item_id_debug/
+    filename_accum: dev/processed/unique_users_cnt_by_item_id_debug/combined_blacklist.parquet
+  out_artifacts:
+    filename_out: dev/processed/unique_users_cnt_by_item_id_debug/combined_blacklist.parquet
+  kwargs:
+    cfg:
+      join_back: False
+      incremental_accum: True
+      eager_execution: True
+      append_keys_to_filename: False
+      features:
+        aggregations:
+        - group_by: ["item_id"]
+          agg:
+            - {alias: unique_users_cnt_by_item_id, col: unique_users_cnt_by_item_id, func: sum}
+      filters:
+        unique_users_cnt_by_item_id: {"<": 2}

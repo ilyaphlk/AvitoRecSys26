@@ -1,0 +1,9 @@
+training:
+  train_events_path: data/dev/processed/train_filter_pop_10_hist_10/
+  eval_users_events_path: data/dev/dict/eval_user_events_pop_10_hist_10.pq
+  steps: 10
+  hidden_dim: 60
+  random_state: 42
+  calculate_training_loss: true
+  show_weight: 1
+  click_weight: 10

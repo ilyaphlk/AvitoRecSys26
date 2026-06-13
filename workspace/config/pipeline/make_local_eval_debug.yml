@@ -1,0 +1,9 @@
+pipeline:
+  experiment_name: prepare_local_eval
+  run_name: make_local_eval_debug
+  stages:
+    - stage_name: prepare_eval
+      config_path: /project/workspace/config/data/eval/debug_stage.yml
+      stage_class: SequentialStage
+      child_stage_class: PrepareLocalEvalStage
+      stage_func: prepare_local_eval

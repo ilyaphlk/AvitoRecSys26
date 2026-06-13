@@ -1,0 +1,6 @@
+inference:
+  eval_users: data/dict/eval_users.csv
+  submission_write_path: data/submissions/als_train_099_p10_h10_submission.csv
+  top_size: 160
+  batch_size: 100
+  fallback_strategy: popular

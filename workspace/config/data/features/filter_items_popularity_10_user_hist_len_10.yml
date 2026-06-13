@@ -1,0 +1,30 @@
+constants:
+  CONTACT_EIDS: [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]
+
+data:
+  files:
+    # in: data/dict/eval_user_events.pq
+    # out: data/dev/dict/eval_user_events_pop_10_hist_10.pq
+    in: data/raw/
+    out: data/dev/processed/train_filter_pop_10_hist_10
+    dict: data/dict
+  features:
+    aggregations:
+    - group_by: [item_id]
+      agg:
+        - {alias: events_cnt_by_item_id, col: user_id, func: count}
+    - group_by: [user_id]
+      agg:
+        - {alias: events_cnt_by_user_id,       col: item_id, func: count}
+        #- {alias: n_unique_item_id_by_user_id, col: item_id, func: n_unique}
+    - group_by: [user_id, item_id]
+      agg:
+        #- {alias: last_interaction_ts,          col: timestamp, func: max}
+        - {alias: cnt_shows_by_user_id_item_id, col: timestamp, func: count}
+        #- {alias: unique_eids_by_user_id_item_id, col: eid, func: unique, filters: [eid: {is_in: $CONTACT_EIDS}]}  # filter only contact eids, then apply function on the eids
+        - {alias: cnt_clicks_by_user_id_item_id, col: eid, func: count_if, condition: {is_in: $CONTACT_EIDS}}  # count_if
+  filters:
+    #date_thr: {"<": "2026-04-08T00:00:00"}
+    events_cnt_by_item_id: {">": 10}
+    events_cnt_by_user_id: {">": 10}
+  execute_on: "separate"

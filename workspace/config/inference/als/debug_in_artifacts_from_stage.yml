@@ -10,11 +10,12 @@ inference_als:
   in_artifacts:
     eval_users: dev/raw/eval/users/part_000.csv
 
-    get_artifacts_from_stage: train_als  # use to infer artifacts subdir dynamically
-    # artifacts_experiment_name: debug_als_exp  # use to enter subdirs manually
-    # artifacts_run_id: <run_id>
+    #get_artifacts_from_stage: train_als  # use to infer artifacts subdir dynamically
     #artifacts_dir: dev/artifacts/als/
     artifacts_dir: dev/artifacts/als/IE_$$MIN_EVENTS_ITEM_ID$$_IC_$$MIN_CLICKS_ITEM_ID$$_UE_$$MIN_EVENTS_USER_ID$$_UC_$$MIN_CLICKS_USER_ID$$/
+    artifacts_experiment_name: debug_als_exp  # use to enter subdirs manually
+    artifacts_run_id: 56a1e3e0a7994e9c85fc2d3ef8bbbd86
+
     model: als_model.als
     item_id_to_index: item_id_to_index.json
     user_id_to_index: user_id_to_index.json
@@ -23,9 +24,8 @@ inference_als:
 
   out_artifacts:
     make_mlflow_artifacts_subdir: true
-    artifacts_dir: dev/artifacts/als/IE_$$MIN_EVENTS_ITEM_ID$$_IC_$$MIN_CLICKS_ITEM_ID$$_UE_$$MIN_EVENTS_USER_ID$$_UC_$$MIN_CLICKS_USER_ID$$/
+    artifacts_dir: submissions/als/debug/IE_$$MIN_EVENTS_ITEM_ID$$_IC_$$MIN_CLICKS_ITEM_ID$$_UE_$$MIN_EVENTS_USER_ID$$_UC_$$MIN_CLICKS_USER_ID$$/
     submission: submission.csv
-    submission_w_scores: submission_w_scores.csv
 
   kwargs:
     top_size: 160

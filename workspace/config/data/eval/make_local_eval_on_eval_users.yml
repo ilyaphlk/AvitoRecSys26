@@ -1,0 +1,11 @@
+prepare_eval:
+  in_artifacts:
+    filename_in: dict/eval_user_events.pq
+    item_features_path: dict/item_features.parquet
+    contact_eids_path: dict/contact_eids.csv
+  out_artifacts:
+    filename_out: processed/eval/local_prod_eval.csv
+  kwargs:
+    synth_threshold: "2026-04-08T00:00:00"
+    write_train_part: true
+    items_blacklist_path: processed/unique_users_cnt_by_item_id/combined_blacklist.parquet
