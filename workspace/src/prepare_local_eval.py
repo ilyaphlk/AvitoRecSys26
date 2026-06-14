@@ -368,7 +368,7 @@ if __name__ == "__main__":
 
     cfg = load_config(cfg_path)["prepare_eval"]
 
-    mlflow.set_tracking_uri("http://localhost:5000")
+    mlflow.set_tracking_uri(f"http://localhost:{os.getenv('MLFLOW_PORT', '5000')}")
     mlflow.set_experiment("prepare_local_eval")
 
     stage = SequentialStage(cfg, PrepareLocalEvalStage, prepare_local_eval)
