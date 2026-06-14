@@ -247,6 +247,19 @@ def path_type(path):
         return PathType.IS_GLOB
     return PathType.IS_FILE
 
+def parse_path_in(path_in) -> tuple[str, list[str]]:
+    """
+        returns a tuple of (dir_in, filename_parts): dir prefix and individual filenames
+    """
+    path_in_type = utils.path_type(path_in)
+    if path_in_type == utils.PathType.IS_FILE:
+        return Path(path_in).parent, [Path(path_in).name]
+    if path_in_type == utils.PathType.IS_DIR:
+        return path_in, sorted(list(filter(lambda s: s.startswith("part_"), utils.listdir(path_in))))
+    
+    dir_in = Path(path_in).parent
+    return dir_in, sorted(utils.listdir(dir_in, glob_pattern=Path(path_in).name))  # todo support glob pattern in listdir
+
 def listdir(path: str, glob_pattern=None) -> list[str]:
     # todo handle case where path is file-like
     if STORAGE_BACKEND == "s3":

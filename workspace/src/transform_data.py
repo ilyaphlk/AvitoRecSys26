@@ -162,21 +162,6 @@ def process_data(frames: list[pl.LazyFrame], cfg, df_accum=None):
 
     return [make_df(elem, cfg) for elem in frames]
 
-
-def parse_path_in(path_in) -> tuple[str, list[str]]:
-    """
-        returns a tuple of (dir_in, filename_parts): dir prefix and individual filenames
-    """
-    path_in_type = utils.path_type(path_in)
-    if path_in_type == utils.PathType.IS_FILE:
-        return Path(path_in).parent, [Path(path_in).name]
-    if path_in_type == utils.PathType.IS_DIR:
-        return path_in, sorted(list(filter(lambda s: s.startswith("part_"), utils.listdir(path_in))))
-    
-    dir_in = Path(path_in).parent
-    return dir_in, sorted(utils.listdir(dir_in, glob_pattern=Path(path_in).name))  # todo support glob pattern in listdir
-
-
 def assert_paths_type_match(cfg):
     fin, fout = cfg["in_artifacts"]["filename_in"], cfg["out_artifacts"]["filename_out"]
     merge_inputs = cfg["in_artifacts"].get("do_merge", False)
@@ -257,7 +242,7 @@ class DataTransformStage(BaseStage):
 
         parts = []
         for path_in in paths_in:
-            dir_in, part_filenames = parse_path_in(path_in)
+            dir_in, part_filenames = utils.parse_path_in(path_in)
             for part_filename in part_filenames:
                 logger.debug(f"scanning {part_filename} from {dir_in}...")
                 read_path = os.path.join(dir_in, part_filename)
@@ -283,7 +268,7 @@ class DataTransformStage(BaseStage):
 
         part_filenames = []
         for path_in in paths_in:
-            _, cur_part_filenames = parse_path_in(path_in)
+            _, cur_part_filenames = utils.parse_path_in(path_in)
             part_filenames.extend(cur_part_filenames)
 
         dir_out, out_filenames = path_out, part_filenames
@@ -373,7 +358,7 @@ class JoinTablesStage(BaseStage):
             ])
         }
 
-        dir_in, part_filenames = parse_path_in(path_in)
+        dir_in, part_filenames = utils.parse_path_in(path_in)
         parts = []
         for part_filename in part_filenames:
             logger.debug(f"scanning {part_filename} from {dir_in}...")
@@ -395,7 +380,7 @@ class JoinTablesStage(BaseStage):
         partition_args = self.cfg["out_artifacts"].get("partition_args", None)
         partition_args = utils.parse_partition_args(partition_args)
 
-        _, part_filenames = parse_path_in(path_in)
+        _, part_filenames = utils.parse_path_in(path_in)
         dir_out, out_filenames = path_out, part_filenames
         if utils.path_type(path_out) == utils.PathType.IS_FILE:
             dir_out, out_filenames = Path(path_out).parent, [Path(path_out).name]
@@ -435,7 +420,7 @@ class SequentialStage(BaseStage):
         path_in = self.cfg["in_artifacts"]["filename_in"]
         path_out = self.cfg["out_artifacts"]["filename_out"]
 
-        dir_in, part_filenames = parse_path_in(path_in)
+        dir_in, part_filenames = utils.parse_path_in(path_in)
         dir_out = Path(path_out).parent if utils.path_type(path_out) == utils.PathType.IS_FILE else path_out
 
         logger.debug(f"making children stages for running on directory: {dir_in}, files: {part_filenames}")

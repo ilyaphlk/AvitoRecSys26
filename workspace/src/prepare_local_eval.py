@@ -50,7 +50,7 @@ from utils import load_config
 import sys
 from stage import BaseStage
 import mlflow
-from transform_data import SequentialStage, parse_path_in
+from transform_data import SequentialStage
 
 import utils
 

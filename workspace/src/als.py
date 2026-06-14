@@ -16,7 +16,6 @@ from stage import BaseStage
 import json
 import mlflow
 import utils
-from transform_data import parse_path_in
 
 
 def ram_report():
@@ -334,7 +333,7 @@ def file_parts_from_paths(paths_in):
 
     parts = []
     for path_in in paths_in:
-        dir_in, part_filenames = parse_path_in(path_in)
+        dir_in, part_filenames = utils.parse_path_in(path_in)
         for part_filename in part_filenames:
             logger.debug(f"scanning {part_filename} from {dir_in}...")
             read_path = os.path.join(dir_in, part_filename)
