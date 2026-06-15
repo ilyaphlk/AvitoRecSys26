@@ -121,7 +121,7 @@ class SASRecModel(nn.Module):
 
 class _SASRecIterableDataset(torch.utils.data.IterableDataset):
     """
-    Streams per-user sequences from a parquet file using PyArrow batched reading.
+    Streams per-user sequences from a parquet file using PyArrow batched reading
     For each user yields:
       inp: (max_seq_len,) input items, left-padded with 0
       tgt: (max_seq_len,) next-item targets per position, left-padded with 0
@@ -166,7 +166,7 @@ class _SASRecIterableDataset(torch.utils.data.IterableDataset):
 
 class _PopularityNegativeSampler:
     """
-    Samples negative item indices proportional to (count + eps)^alpha.
+    Samples negative item indices proportional to (count + eps)^alpha
     alpha=0.0  → uniform
     alpha=0.75 → word2vec-style (recommended default)
     alpha=1.0  → strictly proportional to popularity
@@ -174,27 +174,26 @@ class _PopularityNegativeSampler:
 
     def __init__(
         self,
-        item_counts: np.ndarray,   # (n_items,) raw popularity, aligned to embedding index - 1
+        item_counts: np.ndarray,
         alpha: float = 0.75,
         device: str = "cpu",
         eps: float = 1.0,
     ):
         weights = (item_counts.astype(np.float64) + eps) ** alpha
         probs = weights / weights.sum()
-        # Embedding index 0 is padding; sampled indices below are in [1, n_items]
         self.probs = torch.from_numpy(probs).to(device).float()
         self.log_q = torch.log(self.probs.clamp_min(1e-30))
         self.n_items = item_counts.shape[0]
         self.device = device
 
     def sample(self, n: int) -> tuple[torch.Tensor, torch.Tensor]:
-        """Returns (item_indices in [1, n_items], log_q for those indices)."""
-        idx = torch.multinomial(self.probs, n, replacement=True)   # in [0, n_items - 1]
-        item_indices = idx + 1                                      # shift past padding slot
+        """Returns (item_indices in [1, n_items], log_q for those indices)"""
+        idx = torch.multinomial(self.probs, n, replacement=True)
+        item_indices = idx + 1
         return item_indices, self.log_q[idx]
 
     def log_q_of(self, item_indices: torch.Tensor) -> torch.Tensor:
-        """log q for given item embedding indices (1-indexed). Padding (0) → 0.0 (will be masked)."""
+        """log q for given item embedding indices (1-indexed). Padding (0) → 0.0 (will be masked)"""
         safe = item_indices.clamp(min=1)
         return self.log_q[safe - 1]
 
@@ -204,7 +203,7 @@ class _PopularityNegativeSampler:
 
 @dataclass
 class SASRecPreprocessResult:
-    sequences: pl.LazyFrame              # (user_id, item_sequence) — not yet sunk to disk
+    sequences: pl.LazyFrame  # (user_id, item_sequence)
     item_id_to_index: Dict[int, int]
     user_id_to_index: Dict[int, int]
     popular_top: Optional[pl.DataFrame]
@@ -217,9 +216,9 @@ def preprocess(
     top_size: int = 100,
 ) -> SASRecPreprocessResult:
     """
-    Build per-user item sequences from raw events without loading the full dataset.
-    Unknown item IDs are silently dropped via an inner join.
-    Returns a lazy sequences frame that is sunk to disk by write_artifacts.
+    Build per-user item sequences from raw events without loading the full dataset
+    Unknown item IDs are silently dropped via an inner join
+    Returns a lazy sequences frame that is sunk to disk by write_artifacts
     """
     base = utils.scan_parquet(train_data_path)
     if use_clicks_only:
@@ -239,10 +238,9 @@ def preprocess(
         "item_idx": list(item_id_to_index.values()),
     }).lazy()
 
-    # Build lazy plan — executed (streamed to disk) inside write_artifacts
     sequences_lazy = (
         base
-        .join(item_map, on="item_id", how="inner")   # drop items not seen in train
+        .join(item_map, on="item_id", how="inner")
         .sort(["user_id", "timestamp"])
         .group_by("user_id")
         .agg(pl.col("item_idx").alias("item_sequence"))
@@ -281,7 +279,7 @@ def train(
     sequences_path: str,
     item_id_to_index: Dict[int, int],
     user_id_to_index: Dict[int, int],
-    item_counts: np.ndarray,         # NEW: aligned to embedding index - 1, length n_items
+    item_counts: np.ndarray,
     max_seq_len: int = 50,
     hidden_dim: int = 128,
     n_layers: int = 2,
@@ -291,14 +289,14 @@ def train(
     lr: float = 1e-3,
     epochs: int = 10,
     batch_size: int = 256,
-    n_negatives: int = 4096,         # NEW: sampled negatives per batch
+    n_negatives: int = 4096,
     neg_sampling_alpha: float = 0.75,
     temperature: float = 0.1,
     chunk_size: int = 10_000,
     num_workers: int = 2,
     seed: int = 42,
     device: str = "auto",
-    checkpoint_path: Optional[str] = None,   # NEW: periodic checkpointing
+    checkpoint_path: Optional[str] = None,
 ) -> SASRecTrainResult:
     assert device in {"auto", "cpu", "cuda"}, f"invalid device: {device}"
     if device == "auto":
@@ -342,31 +340,26 @@ def train(
 
         for inp, tgt in loader:
             inp = inp.to(device)        # (B, L)
-            tgt = tgt.to(device)        # (B, L) — 0 means "padding, ignore"
+            tgt = tgt.to(device)        # (B, L)
             B, L = inp.shape
 
             # Sample negatives shared across the batch
-            neg_items, neg_log_q = sampler.sample(n_negatives)        # (N,), (N,)
-            pos_log_q = sampler.log_q_of(tgt)                          # (B, L)
+            neg_items, neg_log_q = sampler.sample(n_negatives)  # (N,), (N,)
+            pos_log_q = sampler.log_q_of(tgt)                   # (B, L)
 
             logits = model.score_sampled(
                 inp, tgt, neg_items, pos_log_q, neg_log_q,
-            ) / temperature                                             # (B, L, 1+N)
+            ) / temperature                                     # (B, L, 1+N)
 
-            # ── Fix #1: mask false negatives (negatives that equal the positive) ──
-            # neg_items: (N,), tgt: (B, L) → (B, L, N) bool of which negatives collide
             collision = neg_items.view(1, 1, -1) == tgt.unsqueeze(-1)
-            # The positive sits at column 0, so pad collision with False on the left
             collision = torch.cat(
                 [torch.zeros(B, L, 1, dtype=torch.bool, device=device), collision],
                 dim=-1,
             )
             logits = logits.masked_fill(collision, float("-inf"))
 
-            # Labels: positive is always column 0; mask padded positions
             labels = torch.zeros(B, L, dtype=torch.long, device=device)
-            valid = tgt != 0                                            # (B, L)
-            # Cross-entropy with -100 ignore_index
+            valid = tgt != 0                                    # (B, L)
             labels = labels.masked_fill(~valid, -100)
 
             loss = F.cross_entropy(
@@ -399,11 +392,11 @@ def train(
 
 
 # ------------------------------------------------------------------------------
-# Inference helpers
+# Inference
 # ------------------------------------------------------------------------------
 
 def _left_pad_sequences(seqs: list[list[int]], max_seq_len: int) -> np.ndarray:
-    """Left-pad a list of variable-length int sequences into a (B, max_seq_len) int64 array."""
+    """Left-pad a list of variable-length int sequences into a (B, max_seq_len) int64 array"""
     out = np.zeros((len(seqs), max_seq_len), dtype=np.int64)
     for i, seq in enumerate(seqs):
         s = seq[-max_seq_len:]
@@ -420,11 +413,10 @@ def _iter_eval_user_sequences(
     """
     Stream (user_ids, item_sequences) chunks from the sequences parquet,
     filtered to the eval user set. Each yielded chunk holds up to `chunk_size`
-    matching users.
+    matching users
     """
     local_path = os.path.join(utils.LOCAL_DATA_DIR, sequences_path)
     pf = pq.ParquetFile(local_path)
-    # Polars filter is fastest when eval_users is a Series, not a Python list
     eval_users_series = pl.Series("user_id", list(eval_users), dtype=pl.Int64)
 
     for pa_batch in pf.iter_batches(
@@ -450,10 +442,10 @@ def _score_batch(
     n_items: int,
     device: str,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Score one model batch. Returns (top_idx, top_scores), both (B, top_size)."""
+    """Score one model batch. Returns (top_idx, top_scores), both (B, top_size)"""
     inputs = _left_pad_sequences(seqs, max_seq_len)
     x = torch.from_numpy(inputs).to(device)
-    scores = model.predict(x)                                       # (B, n_items)
+    scores = model.predict(x)  # (B, n_items)
     top_scores, top_idx = torch.topk(scores, k=min(top_size, n_items), dim=1)
     return top_idx.cpu().numpy(), top_scores.cpu().numpy()
 
@@ -466,7 +458,7 @@ def _build_fallback_df(
 ) -> Iterator[pl.DataFrame]:
     """
     Yield popular-fallback prediction frames in chunks to avoid materializing
-    (n_cold_users × top_size) rows in one allocation.
+    (n_cold_users x top_size) rows in one allocation
     """
     pop_item_ids = popular_top["item_id"].cast(pl.Int64).to_numpy()
     pop_scores = popular_top["count"].cast(pl.Float64).to_numpy()
@@ -484,13 +476,9 @@ def _build_fallback_df(
         })
 
 
-# ------------------------------------------------------------------------------
-# Inference
-# ------------------------------------------------------------------------------
-
 def inference(
     user_to_pred: pl.DataFrame,
-    model,                                       # SASRecModel
+    model,
     item_id_to_index: Dict[int, int],
     sequences_path: str,
     top_size: int = 100,
@@ -501,9 +489,9 @@ def inference(
     device: str = "auto",
 ) -> pl.DataFrame:
     """
-    Score eval users against the full item catalog using the trained SASRec model.
-    Returns pl.DataFrame with schema (user_id, item_id, scores).
-    Users with no sequence history get popular-item fallback if requested.
+    Score eval users against the full item catalog using the trained SASRec model
+    Returns pl.DataFrame with schema (user_id, item_id, scores)
+    Users with no sequence history get popular-item fallback if requested
     """
     assert device in {"auto", "cpu", "cuda"}, f"invalid device: {device}"
     if device == "auto":
@@ -522,8 +510,6 @@ def inference(
     n_items = len(item_id_to_index)
     max_seq_len: int = model.pos_emb.num_embeddings
 
-    # Vectorised index → item_id lookup. embedding index i ∈ [1, n_items]
-    # maps to item id index_to_item_array[i].
     index_to_item_array = np.zeros(n_items + 1, dtype=np.int64)
     for iid, idx in item_id_to_index.items():
         index_to_item_array[idx] = int(iid)
@@ -534,8 +520,6 @@ def inference(
     result_dfs: list[pl.DataFrame] = []
     users_with_preds: set[int] = set()
 
-    # Cross-chunk buffer so we always feed full model batches even when a
-    # parquet chunk yields fewer than `batch_size` matching users.
     buf_users: list[int] = []
     buf_seqs: list[list[int]] = []
 
@@ -545,8 +529,7 @@ def inference(
         top_idx, top_scores = _score_batch(
             model, buf_seqs, max_seq_len, top_size, n_items, device,
         )
-        # top_idx is 0-indexed over non-padding items → +1 to embedding index
-        top_item_ids = index_to_item_array[top_idx + 1]              # (B, top_size)
+        top_item_ids = index_to_item_array[top_idx + 1]  # (B, top_size)
         B, K = top_item_ids.shape
         result_dfs.append(pl.DataFrame({
             "user_id": np.repeat(np.array(buf_users, dtype=np.int64), K),
@@ -567,8 +550,7 @@ def inference(
             if len(buf_users) >= batch_size:
                 flush()
 
-        # Throttled progress logging — once per ~10k newly-scored users
-        if len(users_with_preds) - last_logged >= 10_000:
+        if len(users_with_preds) - last_logged >= 10000:
             logger.info(f"scored {len(users_with_preds)} / {len(eval_user_set)} users")
             last_logged = len(users_with_preds)
 
@@ -579,7 +561,6 @@ def inference(
     mlflow.log_metric("users_pred_by_algo_pct", coverage)
     logger.info(f"model coverage: {len(users_with_preds)} / {len(eval_user_set)} ({coverage:.1%})")
 
-    # Fallback for users with no sequence history
     users_without = eval_user_set - users_with_preds
     if users_without:
         if fallback_strategy == "popular":
@@ -605,9 +586,6 @@ def inference(
         )
     )
 
-# ------------------------------------------------------------------------------
-# Stages
-# ------------------------------------------------------------------------------
 
 def _apply_artifacts_dir(out_artifacts: dict, keys: list[str]):
     artifacts_dir = out_artifacts.get("artifacts_dir", "")
@@ -650,7 +628,6 @@ class SASRecPreprocessStage(BaseStage):
         super().write_artifacts(result)
         _apply_artifacts_dir(out, ["sequences", "item_id_to_index", "user_id_to_index", "popular_top"])
 
-        # Triggers the polars lazy plan — streams raw events to disk
         utils.sink_parquet(result.sequences, out["sequences"],
                            remove_local=self.remove_local, log_artifact=self.log_artifacts)
 
