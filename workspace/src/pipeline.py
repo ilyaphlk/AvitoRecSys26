@@ -7,12 +7,16 @@ import mlflow
 from loguru import logger
 import os
 import check_submission
+import sasrec
 
 
 STAGES_DICT = {
     "ALSPreprocessStage": als.ALSPreprocessStage,
     "ALSTrainStage": als.ALSTrainStage,
     "ALSInferenceStage": als.ALSInferenceStage,
+    "SASRecPreprocessStage": sasrec.SASRecPreprocessStage,
+    "SASRecTrainStage": sasrec.SASRecTrainStage,
+    "SASRecInferenceStage": sasrec.SASRecInferenceStage,
     "DataTransformStage": transform_data.DataTransformStage,
     "MakeAccumStage": transform_data.MakeAccumStage,
     "SequentialStage": transform_data.SequentialStage,
