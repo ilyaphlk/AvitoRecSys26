@@ -208,6 +208,7 @@ class SASRecPreprocessResult:
     user_id_to_index: Dict[int, int]
     popular_top: Optional[pl.DataFrame]
 
+CONTACT_EIDS = [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]
 
 def preprocess(
     train_data_path: str,
@@ -222,7 +223,8 @@ def preprocess(
     """
     base = utils.scan_parquet(train_data_path)
     if use_clicks_only:
-        base = base.filter(pl.col("is_click") == 1)
+        # base = base.filter(pl.col("is_click") == 1)
+        base = base.filter(pl.col("eid").is_in(CONTACT_EIDS))
 
     logger.info("scanning unique item and user IDs...")
     item_ids = base.select("item_id").unique().collect()["item_id"].sort().to_numpy()
