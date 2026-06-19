@@ -207,6 +207,7 @@ class SASRecPreprocessResult:
     item_id_to_index: Dict[int, int]
     user_id_to_index: Dict[int, int]
     popular_top: Optional[pl.DataFrame]
+    item_counts: Optional[pl.DataFrame]
 
 CONTACT_EIDS = [0, 2, 4, 5, 6, 8, 9, 11, 14, 15, 16]
 
@@ -214,6 +215,7 @@ def preprocess(
     train_data_path: str,
     use_clicks_only: bool = False,
     make_popular_top: bool = True,
+    make_item_counts: bool = True,
     top_size: int = 100,
 ) -> SASRecPreprocessResult:
     """
@@ -248,23 +250,37 @@ def preprocess(
         .agg(pl.col("item_idx").alias("item_sequence"))
     )
 
-    popular_top = None
-    if make_popular_top:
-        logger.info("computing popular items...")
-        popular_top = (
+    item_counts = None
+    if make_item_counts:
+        logger.info("making item counts...")
+        item_counts = (
             base
             .group_by("item_id")
             .agg(pl.len().alias("count"))
-            .sort("count", descending=True)
-            .head(top_size)
             .collect()
         )
+
+    popular_top = None
+    if make_popular_top:
+        logger.info("computing popular items...")
+        if item_counts is not None:
+            popular_top = item_counts.sort("count", descending=True).head(top_size)
+        else:
+            popular_top = (
+                base
+                .group_by("item_id")
+                .agg(pl.len().alias("count"))
+                .sort("count", descending=True)
+                .head(top_size)
+                .collect()
+            )
 
     return SASRecPreprocessResult(
         sequences=sequences_lazy,
         item_id_to_index=item_id_to_index,
         user_id_to_index=user_id_to_index,
         popular_top=popular_top,
+        item_counts=item_counts,
     )
 
 # ------------------------------------------------------------------------------
@@ -341,6 +357,7 @@ def train(
         total_loss, n_batches = 0.0, 0
 
         for inp, tgt in loader:
+            logger.info(f"processing batch {n_batches}...")
             inp = inp.to(device)        # (B, L)
             tgt = tgt.to(device)        # (B, L)
             B, L = inp.shape
@@ -628,7 +645,7 @@ class SASRecPreprocessStage(BaseStage):
         out = self.cfg["out_artifacts"]
         _maybe_add_mlflow_subdir(out)
         super().write_artifacts(result)
-        _apply_artifacts_dir(out, ["sequences", "item_id_to_index", "user_id_to_index", "popular_top"])
+        _apply_artifacts_dir(out, ["sequences", "item_id_to_index", "user_id_to_index", "popular_top", "item_counts"])
 
         utils.sink_parquet(result.sequences, out["sequences"],
                            remove_local=self.remove_local, log_artifact=self.log_artifacts)
@@ -644,6 +661,10 @@ class SASRecPreprocessStage(BaseStage):
             utils.sink_parquet(result.popular_top, out["popular_top"],
                                remove_local=self.remove_local, log_artifact=self.log_artifacts)
 
+        if result.item_counts is not None and "item_counts" in out:
+            utils.sink_parquet(result.item_counts, out["item_counts"],
+                               remove_local=self.remove_local, log_artifact=self.log_artifacts)
+
     def _func(self, *args, **kwargs):
         return preprocess(*args, **kwargs)
 
@@ -654,6 +675,7 @@ class SASRecTrainStage(BaseStage):
         assert "sequences" in cfg["in_artifacts"]
         assert "item_id_to_index" in cfg["in_artifacts"]
         assert "user_id_to_index" in cfg["in_artifacts"]
+        assert "item_counts" in cfg["in_artifacts"]
 
         assert "kwargs" in cfg
 
@@ -666,12 +688,19 @@ class SASRecTrainStage(BaseStage):
 
     def load_artifacts(self):
         in_a = self.cfg["in_artifacts"]
+        item_id_to_index = {int(k): int(v) for k, v in utils.load_artifact(in_a["item_id_to_index"]).items()}
+        user_id_to_index = {int(k): int(v) for k, v in utils.load_artifact(in_a["user_id_to_index"]).items()}
+        item_counts = utils.read_parquet(in_a["item_counts"])
+        idx = item_counts["item_id"].replace(item_id_to_index).to_numpy()
+        cnt = item_counts["count"].to_numpy()
+        item_counts_npy = np.zeros(idx.max(), dtype=cnt.dtype)
+        item_counts_npy[idx - 1] = cnt
+
         return {
             "sequences_path": in_a["sequences"],
-            "item_id_to_index": {int(k): int(v) for k, v in
-                                  utils.load_artifact(in_a["item_id_to_index"]).items()},
-            "user_id_to_index": {int(k): int(v) for k, v in
-                                  utils.load_artifact(in_a["user_id_to_index"]).items()},
+            "item_id_to_index": item_id_to_index,
+            "user_id_to_index": user_id_to_index,
+            "item_counts": item_counts_npy
         }
 
     def write_artifacts(self, result: SASRecTrainResult):
