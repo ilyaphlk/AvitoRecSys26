@@ -354,10 +354,10 @@ def train(
 
     for epoch in range(epochs):
         model.train()
-        total_loss, n_batches = 0.0, 0
+        total_loss, batch_idx, batches_in_epoch = 0.0, 0, 0
 
         for inp, tgt in loader:
-            logger.info(f"processing batch {n_batches}...")
+            logger.info(f"processing batch {batch_idx}...")
             inp = inp.to(device)        # (B, L)
             tgt = tgt.to(device)        # (B, L)
             B, L = inp.shape
@@ -391,10 +391,16 @@ def train(
             loss.backward()
             optimizer.step()
 
-            total_loss += loss.item()
-            n_batches += 1
+            batch_loss = loss.item()
+            mlflow.log_metric("batch_train_loss", batch_loss, step=batches_in_epoch * epoch + batch_idx)
 
-        avg_loss = total_loss / max(n_batches, 1)
+            total_loss += batch_loss
+            batch_idx += 1
+
+        batches_in_epoch = batch_idx
+        logger.info(f"processed {batches_in_epoch} batches in epoch {epoch + 1}")
+
+        avg_loss = total_loss / max(batches_in_epoch, 1)
         logger.info(f"epoch {epoch + 1}/{epochs}  loss={avg_loss:.4f}")
         mlflow.log_metric("train_loss", avg_loss, step=epoch)
 
