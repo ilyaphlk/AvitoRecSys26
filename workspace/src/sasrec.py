@@ -612,22 +612,28 @@ def inference(
     )
 
 
-def _apply_artifacts_dir(out_artifacts: dict, keys: list[str]):
-    artifacts_dir = out_artifacts.get("artifacts_dir", "")
+def _apply_artifacts_dir(artifacts_cfg: dict, keys: list[str]):
+    artifacts_dir = artifacts_cfg.get("artifacts_dir", "")
+    artifacts_run_id = artifacts_cfg.get("artifacts_run_id", "")
+    artifacts_experiment_name = artifacts_cfg.get("artifacts_experiment_name", "")
     for k in keys:
-        if k in out_artifacts:
-            out_artifacts[k] = os.path.join(artifacts_dir, out_artifacts[k])
+        if k in artifacts_cfg:
+            artifacts_cfg[k] = os.path.join(
+                artifacts_dir, artifacts_run_id, artifacts_experiment_name, artifacts_cfg[k]
+            )
 
 
-def _maybe_add_mlflow_subdir(out_artifacts: dict):
-    if not out_artifacts.get("make_mlflow_artifacts_subdir", False):
+def _maybe_add_mlflow_subdir(artifacts_cfg: dict):
+    """
+        modifies the artifacts_dir if needed
+    """
+    if not "artifacts_dir" in artifacts_cfg:
         return
-    run = mlflow.active_run()
-    run_id = run.info.run_id
-    exp_name = mlflow.get_experiment(run.info.experiment_id).name
-    out_artifacts["artifacts_dir"] = os.path.join(
-        out_artifacts["artifacts_dir"], exp_name, run_id, ""
-    )
+
+    if artifacts_cfg.get("make_mlflow_artifacts_subdir", False):
+        run = mlflow.active_run()
+        artifacts_cfg["artifacts_run_id"] = run.info.run_id
+        artifacts_cfg["artifacts_experiment_name"] = mlflow.get_experiment(run.info.experiment_id).name
 
 
 class SASRecPreprocessStage(BaseStage):
@@ -645,30 +651,32 @@ class SASRecPreprocessStage(BaseStage):
         return self.cfg.get("kwargs", {})
 
     def load_artifacts(self):
-        return {"train_data": utils.scan_parquet(self.cfg["in_artifacts"]["filename_in"])}
+        cfg_in = self.cfg["in_artifacts"]
+        _apply_artifacts_dir(cfg_in, ["filename_in"])
+        return {"train_data": utils.scan_parquet(cfg_in["filename_in"])}
 
     def write_artifacts(self, result: SASRecPreprocessResult):
-        out = self.cfg["out_artifacts"]
-        _maybe_add_mlflow_subdir(out)
+        cfg_out = self.cfg["out_artifacts"]
+        _maybe_add_mlflow_subdir(cfg_out)
+        _apply_artifacts_dir(cfg_out, ["sequences", "item_id_to_index", "user_id_to_index", "popular_top", "item_counts"])
         super().write_artifacts(result)
-        _apply_artifacts_dir(out, ["sequences", "item_id_to_index", "user_id_to_index", "popular_top", "item_counts"])
 
-        utils.sink_parquet(result.sequences, out["sequences"],
+        utils.sink_parquet(result.sequences, cfg_out["sequences"],
                            remove_local=self.remove_local, log_artifact=self.log_artifacts)
 
         utils.save_artifact({int(k): int(v) for k, v in result.item_id_to_index.items()},
-                            out["item_id_to_index"],
+                            cfg_out["item_id_to_index"],
                             remove_local=self.remove_local, log_artifact=self.log_artifacts)
         utils.save_artifact({int(k): int(v) for k, v in result.user_id_to_index.items()},
-                            out["user_id_to_index"],
+                            cfg_out["user_id_to_index"],
                             remove_local=self.remove_local, log_artifact=self.log_artifacts)
 
-        if result.popular_top is not None and "popular_top" in out:
-            utils.sink_parquet(result.popular_top, out["popular_top"],
+        if result.popular_top is not None and "popular_top" in cfg_out:
+            utils.sink_parquet(result.popular_top, cfg_out["popular_top"],
                                remove_local=self.remove_local, log_artifact=self.log_artifacts)
 
-        if result.item_counts is not None and "item_counts" in out:
-            utils.sink_parquet(result.item_counts, out["item_counts"],
+        if result.item_counts is not None and "item_counts" in cfg_out:
+            utils.sink_parquet(result.item_counts, cfg_out["item_counts"],
                                remove_local=self.remove_local, log_artifact=self.log_artifacts)
 
     def _func(self, *args, **kwargs):
@@ -693,17 +701,19 @@ class SASRecTrainStage(BaseStage):
         return self.cfg["kwargs"]
 
     def load_artifacts(self):
-        in_a = self.cfg["in_artifacts"]
-        item_id_to_index = {int(k): int(v) for k, v in utils.load_artifact(in_a["item_id_to_index"]).items()}
-        user_id_to_index = {int(k): int(v) for k, v in utils.load_artifact(in_a["user_id_to_index"]).items()}
-        item_counts = utils.read_parquet(in_a["item_counts"])
+        cfg_in = self.cfg["in_artifacts"]
+        _apply_artifacts_dir(cfg_in, ["item_id_to_index", "user_id_to_index", "item_counts", "sequences"])
+        item_id_to_index = {int(k): int(v) for k, v in utils.load_artifact(cfg_in["item_id_to_index"]).items()}
+        user_id_to_index = {int(k): int(v) for k, v in utils.load_artifact(cfg_in["user_id_to_index"]).items()}
+        item_counts = utils.read_parquet(cfg_in["item_counts"])
+        
         idx = item_counts["item_id"].replace(item_id_to_index).to_numpy()
         cnt = item_counts["count"].to_numpy()
         item_counts_npy = np.zeros(idx.max(), dtype=cnt.dtype)
         item_counts_npy[idx - 1] = cnt
 
         return {
-            "sequences_path": in_a["sequences"],
+            "sequences_path": cfg_in["sequences"],
             "item_id_to_index": item_id_to_index,
             "user_id_to_index": user_id_to_index,
             "item_counts": item_counts_npy
@@ -712,8 +722,8 @@ class SASRecTrainStage(BaseStage):
     def write_artifacts(self, result: SASRecTrainResult):
         out = self.cfg["out_artifacts"]
         _maybe_add_mlflow_subdir(out)
-        super().write_artifacts(result)
         _apply_artifacts_dir(out, ["model"])
+        super().write_artifacts(result)
 
         checkpoint = {
             "state_dict": result.model.state_dict(),
@@ -745,42 +755,33 @@ class SASRecInferenceStage(BaseStage):
         return self.cfg["kwargs"]
 
     def load_artifacts(self):
-        in_a = self.cfg["in_artifacts"]
-        artifacts_dir = in_a.get("artifacts_dir", "")
-        run_id = in_a.get("artifacts_run_id", "")
-        exp_name = in_a.get("artifacts_experiment_name", "")
+        cfg_in = self.cfg["in_artifacts"]
+        _apply_artifacts_dir(cfg_in, ["model", "item_id_to_index", "sequences", "popular_top"])
 
-        for key in ["model", "item_id_to_index", "sequences", "popular_top"]:
-            if key in in_a:
-                in_a[key] = os.path.join(artifacts_dir, exp_name, run_id, in_a[key])
-
-        checkpoint = utils.load_artifact(in_a["model"])
+        checkpoint = utils.load_artifact(cfg_in["model"])
         model = SASRecModel(**checkpoint["config"])
         model.load_state_dict(checkpoint["state_dict"])
         model.eval()
 
-        item_id_to_index = {int(k): int(v) for k, v in
-                             utils.load_artifact(in_a["item_id_to_index"]).items()}
+        item_id_to_index = {int(k): int(v) for k, v in utils.load_artifact(cfg_in["item_id_to_index"]).items()}
 
         return {
-            "user_to_pred": utils.read_csv(in_a["eval_users"]),
+            "user_to_pred": utils.read_csv(cfg_in["eval_users"]),
             "model": model,
             "item_id_to_index": item_id_to_index,
-            "sequences_path": in_a["sequences"],
-            "popular_top": utils.read_parquet(in_a["popular_top"]) if "popular_top" in in_a else None,
+            "sequences_path": cfg_in["sequences"],
+            "popular_top": utils.read_parquet(cfg_in["popular_top"]) if "popular_top" in cfg_in else None,
         }
 
     def write_artifacts(self, result: pl.DataFrame):
-        out = self.cfg["out_artifacts"]
-        _maybe_add_mlflow_subdir(out)
+        out_cfg = self.cfg["out_artifacts"]
+        _maybe_add_mlflow_subdir(out_cfg)
+        _apply_artifacts_dir(out_cfg, ["submission"])
         super().write_artifacts(result)
-
-        if "artifacts_dir" in out:
-            out["submission"] = os.path.join(out["artifacts_dir"], out["submission"])
 
         utils.write_csv(
             result.select(pl.col("user_id"), pl.col("item_id")),
-            out["submission"],
+            out_cfg["submission"],
             remove_local=self.remove_local,
             log_artifact=self.log_artifacts,
         )
