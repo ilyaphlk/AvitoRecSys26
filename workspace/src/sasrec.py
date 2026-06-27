@@ -633,7 +633,7 @@ def _maybe_add_mlflow_subdir(out_artifacts: dict):
 class SASRecPreprocessStage(BaseStage):
     def assert_args_in_cfg(self, cfg):
         assert "in_artifacts" in cfg
-        assert "train_data" in cfg["in_artifacts"]
+        assert "filename_in" in cfg["in_artifacts"]
 
         assert "out_artifacts" in cfg
         assert "artifacts_dir" in cfg["out_artifacts"]
