@@ -65,14 +65,19 @@ class BaseStage:
         """
             write run artifacts to disk (locally)
         """
-        write_artifacts_kwargs = {"partition_args", "artifacts_dir", "make_mlflow_artifacts_subdir"}
-        artifacts_dir = self.cfg["out_artifacts"].get("artifacts_dir", "")
+        write_artifacts_kwargs = {
+            "partition_args",
+            "artifacts_dir",
+            "artifacts_run_id",
+            "artifacts_experiment_name",
+            "make_mlflow_artifacts_subdir"
+        }
         for section_name, fp in self.cfg["out_artifacts"].items():
             if section_name in write_artifacts_kwargs:
                 continue
             if os.path.split(fp)[-1] == "":  # check if dir-like
                 fp = os.path.join(fp, "placeholder")
-            p = Path(utils.LOCAL_DATA_DIR, artifacts_dir, fp)
+            p = Path(utils.LOCAL_DATA_DIR, fp)
             p.parent.mkdir(parents=True, exist_ok=True)
 
     def _func(self, *args, **kwargs):
