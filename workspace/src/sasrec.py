@@ -622,9 +622,15 @@ def _apply_artifacts_dir(artifacts_cfg: dict, keys: list[str]):
     artifacts_experiment_name = artifacts_cfg.get("artifacts_experiment_name", "")
     for k in keys:
         if k in artifacts_cfg:
-            artifacts_cfg[k] = os.path.join(
-                artifacts_dir, artifacts_run_id, artifacts_experiment_name, artifacts_cfg[k]
-            )
+            if isinstance(artifacts_cfg[k], str):
+                artifacts_cfg[k] = os.path.join(
+                    artifacts_dir, artifacts_run_id, artifacts_experiment_name, artifacts_cfg[k]
+                )
+            elif isinstance(artifacts_cfg[k], list):
+                for idx in range(len(artifacts_cfg[k])):
+                    artifacts_cfg[k][idx] = os.path.join(
+                        artifacts_dir, artifacts_run_id, artifacts_experiment_name, artifacts_cfg[k][idx]
+                    )
 
 
 def _maybe_add_mlflow_subdir(artifacts_cfg: dict):
