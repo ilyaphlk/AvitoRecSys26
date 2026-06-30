@@ -134,7 +134,7 @@ class _SASRecIterableDataset(torch.utils.data.IterableDataset):
         if isinstance(sequences_path, str):
             sequences_path = [sequences_path]
 
-        self.local_paths = [os.path.join(utils.LOCAL_DATA_DIR, path) for path in sequences_path]
+        self.local_paths = sequences_path
         self.max_seq_len = max_seq_len
         self.chunk_size = chunk_size
 
@@ -143,27 +143,31 @@ class _SASRecIterableDataset(torch.utils.data.IterableDataset):
         n_workers = 1 if worker_info is None else worker_info.num_workers
         worker_id = 0 if worker_info is None else worker_info.id
 
-        for local_path in self.local_paths:
-            pf = pq.ParquetFile(local_path)
-            for batch_idx, pa_batch in enumerate(
-                pf.iter_batches(batch_size=self.chunk_size, columns=["item_sequence"])
-            ):
-                if batch_idx % n_workers != worker_id:
+        dataset = ds.dataset(self.local_paths, format="parquet")
+        files = sorted(dataset.files)   # deterministic order across workers
+
+        if len(files) >= n_workers:
+            subfiles = files[worker_id::n_workers]
+            subdataset = ds.dataset(subfiles, format="parquet")
+            batch_iter = subdataset.scanner(columns=["item_sequence"], batch_size=self.chunk_size).to_batches()
+        else:
+            scanner = dataset.scanner(columns=["item_sequence"], batch_size=self.chunk_size)
+            batch_iter = (b for i, b in enumerate(scanner.to_batches()) if i % n_workers == worker_id)
+
+        for pa_batch in batch_iter:
+            for seq in pa_batch.column("item_sequence").to_pylist():
+                if len(seq) < 2:
                     continue
-                for seq in pa_batch.column("item_sequence").to_pylist():
-                    if len(seq) < 2:
-                        continue
-                    # Keep at most max_seq_len + 1 items so input/target both fit in max_seq_len
-                    full = list(seq)[-(self.max_seq_len + 1):]
-                    inp = full[:-1]
-                    tgt = full[1:]
-                    pad = self.max_seq_len - len(inp)
-                    inp = [0] * pad + inp
-                    tgt = [0] * pad + tgt
-                    yield (
-                        torch.tensor(inp, dtype=torch.long),
-                        torch.tensor(tgt, dtype=torch.long),
-                    )
+                full = list(seq)[-(self.max_seq_len + 1):]
+                inp = full[:-1]
+                tgt = full[1:]
+                pad = self.max_seq_len - len(inp)
+                inp = [0] * pad + inp
+                tgt = [0] * pad + tgt
+                yield (
+                    torch.tensor(inp, dtype=torch.long),
+                    torch.tensor(tgt, dtype=torch.long),
+                )
 
 
 # ------------------------------------------------------------------------------
