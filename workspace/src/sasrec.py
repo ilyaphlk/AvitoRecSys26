@@ -131,7 +131,7 @@ class _SASRecIterableDataset(torch.utils.data.IterableDataset):
     """
 
     def __init__(self, sequences_path: str | list[str], max_seq_len: int, chunk_size: int = 10_000):
-        if isinstance(sequences_path, list):
+        if isinstance(sequences_path, str):
             sequences_path = [sequences_path]
 
         self.local_paths = [os.path.join(utils.LOCAL_DATA_DIR, path) for path in sequences_path]
