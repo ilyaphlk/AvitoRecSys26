@@ -143,12 +143,13 @@ class _SASRecIterableDataset(torch.utils.data.IterableDataset):
         n_workers = 1 if worker_info is None else worker_info.num_workers
         worker_id = 0 if worker_info is None else worker_info.id
 
-        dataset = ds.dataset(self.local_paths, format="parquet")
+        filesystem = s3fs.S3FileSystem() if os.getenv("STORAGE_BACKEND", "local") == "s3" else None
+        dataset = ds.dataset(self.local_paths, filesystem=filesystem, format="parquet")
         files = sorted(dataset.files)   # deterministic order across workers
 
         if len(files) >= n_workers:
             subfiles = files[worker_id::n_workers]
-            subdataset = ds.dataset(subfiles, format="parquet")
+            subdataset = ds.dataset(subfiles, filesystem=filesystem, format="parquet")
             batch_iter = subdataset.scanner(columns=["item_sequence"], batch_size=self.chunk_size).to_batches()
         else:
             scanner = dataset.scanner(columns=["item_sequence"], batch_size=self.chunk_size)
@@ -453,7 +454,7 @@ def _iter_eval_user_sequences(
     eval_users_series = pl.Series("user_id", list(eval_users), dtype=pl.Int64)
 
     filesystem = s3fs.S3FileSystem() if os.getenv("STORAGE_BACKEND", "local") == "s3" else None
-    dataset = ds.dataset(sequences_path, filesystem=filesystem)
+    dataset = ds.dataset(sequences_path, filesystem=filesystem, format="parquet")
     scanner = dataset.scanner(
         columns=["user_id", "item_sequence"],
         batch_size=chunk_size,
