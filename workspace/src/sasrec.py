@@ -7,6 +7,8 @@ import mlflow
 import numpy as np
 import polars as pl
 import pyarrow.parquet as pq
+import pyarrow.dataset as ds
+import s3fs
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -444,13 +446,15 @@ def _iter_eval_user_sequences(
     filtered to the eval user set. Each yielded chunk holds up to `chunk_size`
     matching users
     """
-    local_path = os.path.join(utils.LOCAL_DATA_DIR, sequences_path)
-    pf = pq.ParquetFile(local_path)
     eval_users_series = pl.Series("user_id", list(eval_users), dtype=pl.Int64)
 
-    for pa_batch in pf.iter_batches(
-        batch_size=chunk_size, columns=["user_id", "item_sequence"]
-    ):
+    filesystem = s3fs.S3FileSystem() if os.getenv("STORAGE_BACKEND", "local") == "s3" else None
+    dataset = ds.dataset(sequences_path, filesystem=filesystem)
+    scanner = dataset.scanner(
+        columns=["user_id", "item_sequence"],
+        batch_size=chunk_size,
+    )
+    for pa_batch in scanner.to_batches():
         df = pl.from_arrow(pa_batch).filter(
             pl.col("user_id").cast(pl.Int64).is_in(eval_users_series)
         )
@@ -784,11 +788,19 @@ class SASRecInferenceStage(BaseStage):
 
         item_id_to_index = {int(k): int(v) for k, v in utils.load_artifact(cfg_in["item_id_to_index"]).items()}
 
+        parsed_sequences_filenames = list()
+        if isinstance(cfg_in["sequences"], str):
+            cfg_in["sequences"] = [cfg_in["sequences"]]
+        
+        for sequence_path in cfg_in["sequences"]:
+            parent_dir, part_filenames = utils.parse_path_in(sequence_path)
+            parsed_sequences_filenames.extend([os.path.join(parent_dir, part_filename) for part_filename in part_filenames])
+
         return {
             "user_to_pred": utils.read_csv(cfg_in["eval_users"]),
             "model": model,
             "item_id_to_index": item_id_to_index,
-            "sequences_path": cfg_in["sequences"],
+            "sequences_path": parsed_sequences_filenames,
             "popular_top": utils.read_parquet(cfg_in["popular_top"]) if "popular_top" in cfg_in else None,
         }
 
