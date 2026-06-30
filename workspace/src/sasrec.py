@@ -697,6 +697,7 @@ class SASRecTrainStage(BaseStage):
     def assert_args_in_cfg(self, cfg):
         assert "in_artifacts" in cfg
         assert "sequences" in cfg["in_artifacts"]
+        assert isinstance(cfg["in_artifacts"]["sequences"], (str, list))
         assert "item_id_to_index" in cfg["in_artifacts"]
         assert "user_id_to_index" in cfg["in_artifacts"]
         assert "item_counts" in cfg["in_artifacts"]
@@ -722,8 +723,16 @@ class SASRecTrainStage(BaseStage):
         item_counts_npy = np.zeros(idx.max(), dtype=cnt.dtype)
         item_counts_npy[idx - 1] = cnt
 
+        parsed_sequences_filenames = list()
+        if isinstance(cfg_in["sequences"], str):
+            cfg_in["sequences"] = [cfg_in["sequences"]]
+        
+        for sequence_path in cfg_in["sequences"]:
+            parent_dir, part_filenames = utils.parse_path_in(sequence_path)
+            parsed_sequences_filenames.extend([os.path.join(parent_dir, part_filename) for part_filename in part_filenames])
+
         return {
-            "sequences_path": cfg_in["sequences"],
+            "sequences_path": parsed_sequences_filenames,
             "item_id_to_index": item_id_to_index,
             "user_id_to_index": user_id_to_index,
             "item_counts": item_counts_npy
